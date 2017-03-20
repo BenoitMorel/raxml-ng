@@ -8,15 +8,18 @@
 
 struct PartitionRange
 {
-  PartitionRange() : part_id(0), start(0), length(0) {}
+  PartitionRange() : part_id(0), start(0), length(0), weight_ratio(1.0) {}
   PartitionRange(size_t part_id, size_t start, size_t length):
-    part_id(part_id), start(start), length(length) {};
+    part_id(part_id), start(start), length(length), weight_ratio(1.0) {};
+  PartitionRange(size_t part_id, size_t start, size_t length, double weight_ratio):
+    part_id(part_id), start(start), length(length), weight_ratio(weight_ratio) {};
 
   bool master() const { return start == 0; };
-
+  double weight() const { return weight_ratio * double(length); }
   size_t part_id;
   size_t start;
   size_t length;
+  double weight_ratio;
 };
 
 struct PartitionAssignment
@@ -28,7 +31,8 @@ struct PartitionAssignment
   PartitionAssignment() : _weight(0.0) {}
 
   size_t num_parts() const { return _part_range_list.size(); }
-  size_t weight() const { return (size_t) _weight; }
+  size_t sites() const { return _sites; }
+  double weight() const { return _weight; }
   const PartitionRange& operator[](size_t i) const { return _part_range_list.at(i); }
   const_iterator find(size_t part_id) const
   {
@@ -36,10 +40,11 @@ struct PartitionAssignment
                          [part_id](const PartitionRange& r) { return (r.part_id == part_id);} );
   };
 
-  void assign_sites(size_t partition_id, size_t offset, size_t length)
+  void assign_sites(size_t partition_id, size_t offset, size_t length, double weight_ratio = 1.0)
   {
     _part_range_list.emplace_back(partition_id, offset, length);
-    _weight += length;
+    _weight += double(length) * weight_ratio;
+    _sites += length;
   }
 
   const_iterator begin() const { return _part_range_list.cbegin(); };
@@ -48,6 +53,7 @@ struct PartitionAssignment
 private:
   container _part_range_list;
   double _weight;
+  size_t _sites;
 };
 
 typedef std::vector<PartitionAssignment> PartitionAssignmentList;
@@ -60,9 +66,9 @@ struct PartitionAssignmentStats
     min_thread_sites = min_thread_parts = std::numeric_limits<size_t>::max();
     for (auto pa: part_assign)
     {
-      min_thread_sites = std::min(min_thread_sites, pa.weight());
+      min_thread_sites = std::min(min_thread_sites, pa.sites());
       min_thread_parts = std::min(min_thread_parts, pa.num_parts());
-      max_thread_sites = std::max(max_thread_sites, pa.weight());
+      max_thread_sites = std::max(max_thread_sites, pa.sites());
       max_thread_parts = std::max(max_thread_parts, pa.num_parts());
     }
   }

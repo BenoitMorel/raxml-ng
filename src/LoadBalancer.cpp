@@ -2,7 +2,7 @@
 #include <stack>
 #include <algorithm>
 #include <stdexcept>
-
+#include <iostream>
 #include "LoadBalancer.hpp"
 
 using namespace std;
@@ -68,25 +68,24 @@ PartitionAssignmentList KassianLoadBalancer::compute_assignments(const Partition
                                                                  size_t num_procs)
 {
   PartitionAssignmentList bins(num_procs);
-
+  
   // Sort the partitions by size in ascending order
   vector<const PartitionRange*> sorted_partitions;
   for (auto const& range: part_sizes)
     sorted_partitions.push_back(&range);
   sort(sorted_partitions.begin(), sorted_partitions.end(),
-       [](const PartitionRange *r1, const PartitionRange *r2) { return (r1->length < r2->length);} );
+       [](const PartitionRange *r1, const PartitionRange *r2) 
+       { return (r1->weight() < r2->weight());} );
 
   // Compute the maximum number of sites per Bin
-  size_t total_sites = 0;
+  double total_weight = 0;
   for (auto const& range: part_sizes)
   {
-    total_sites += range.length;
+    total_weight += range.weight();
   }
 
-  unsigned int max_sites = (total_sites - 1) / bins.size() + 1;
-  unsigned int r = (max_sites * bins.size()) - total_sites;
+  double  max_weight = total_weight / double(bins.size());
   unsigned int curr_part = 0; // index in sorted_partitons (AND NOT IN _partitions)
-  unsigned int full_bins = 0;
   unsigned int current_bin = 0;
 
 //  vector<size_t> weights(num_procs, 0);
@@ -97,24 +96,13 @@ PartitionAssignmentList KassianLoadBalancer::compute_assignments(const Partition
   {
     const PartitionRange *partition = sorted_partitions[curr_part];
     current_bin = curr_part % bins.size();
-    if (partition->length + bins[current_bin].weight() > max_sites)
+    if (partition->weight() + bins[current_bin].weight() > max_weight)
     {
       // the partition exceeds the current bin's size, go to the next step of the algo
       break;
     }
     // add the partition !
-    bins[current_bin].assign_sites(partition->part_id, 0, partition->length);
-    if (bins[current_bin].weight() == max_sites)
-    {
-      // one more bin is exactly full
-      if (++full_bins == (bins.size() - r))
-      {
-        // border case : the remaining bins should not exceed max_sites - 1
-        max_sites--;
-      }
-      // flag it as full (its harder to rely on max_sites because its value changes)
-      full[current_bin] = true;
-    }
+    bins[current_bin].assign_sites(partition->part_id, 0, partition->length, partition->weight_ratio);
   }
 
   stack<PartitionAssignment *> qlow_;
@@ -139,33 +127,27 @@ PartitionAssignmentList KassianLoadBalancer::compute_assignments(const Partition
   {
     const PartitionRange *partition = sorted_partitions[curr_part];
     // try to dequeue a process from Qhigh and to fill it
-    if (qhigh.size() && (qhigh.top()->weight() + remaining >= max_sites))
+    if (qhigh.size() && (qhigh.top()->weight() + remaining * partition->weight_ratio >= max_weight))
     {
       PartitionAssignment * bin = qhigh.top();
       qhigh.pop();
-      unsigned int toassign = max_sites - bin->weight();
-      bin->assign_sites(partition->part_id, partition->length - remaining, toassign);
+      unsigned int toassign = (max_weight - bin->weight()) / partition->weight_ratio;
+      bin->assign_sites(partition->part_id, partition->length - remaining, toassign, partition->weight_ratio);
       remaining -= toassign;
-      if (++full_bins == (bins.size() - r)) {
-        max_sites--;
-      }
     }
-    else if ((qlow->top()->weight() + remaining >= max_sites))
+    else if ((qlow->top()->weight() + remaining * partition->weight_ratio >= max_weight))
     { // same with qlow
       PartitionAssignment * bin = qlow->top();
       qlow->pop();
-      unsigned int toassign = max_sites - bin->weight();
-      bin->assign_sites(partition->part_id, partition->length - remaining, toassign);
+      unsigned int toassign = (max_weight - bin->weight()) / partition->weight_ratio;
+      bin->assign_sites(partition->part_id, partition->length - remaining, toassign, partition->weight_ratio);
       remaining -= toassign;
-      if (++full_bins == (bins.size() - r)) {
-        max_sites--;
-      }
     }
     else
     {
       PartitionAssignment * bin = qlow->top();
       qlow->pop();
-      bin->assign_sites(partition->part_id, partition->length - remaining, remaining);
+      bin->assign_sites(partition->part_id, partition->length - remaining, remaining, partition->weight_ratio);
       remaining = 0;
       qhigh.push(bin);
     }
@@ -182,6 +164,6 @@ PartitionAssignmentList KassianLoadBalancer::compute_assignments(const Partition
       }
     }
   }
-
+  std::cout << bins << std::endl;
   return bins;
 }
