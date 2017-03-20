@@ -43,6 +43,7 @@ static struct option long_options[] =
   {"all",                no_argument,       0, 0 },  /*  25 */
   {"bs-trees",           required_argument, 0, 0 },  /*  26 */
   {"redo",               no_argument,       0, 0 },  /*  27 */
+  {"repeats",            no_argument,       0, 0 },  /*  28 */
 
   { 0, 0, 0, 0 }
 };
@@ -68,6 +69,8 @@ void CommandLineParser::parse_options(int argc, char** argv, Options &opts)
   opts.use_pattern_compression = true;
   /* use tip-inner case optimization by default */
   opts.use_tip_inner = true;
+  /* do not use repeats optimization by default */
+  opts.use_repeats = false;
 
   /* do not use per-rate-category CLV scalers */
   opts.use_rate_scalers = false;
@@ -359,6 +362,10 @@ void CommandLineParser::parse_options(int argc, char** argv, Options &opts)
         break;
       case 27:
         opts.redo_mode = true;
+        break;
+      case 28: /* disable tip-inner optimization */
+        opts.use_repeats = !optarg || (strcasecmp(optarg, "off") != 0);
+        opts.use_tip_inner &= !opts.use_repeats;
         break;
       default:
         throw  OptionException("Internal error in option parsing");

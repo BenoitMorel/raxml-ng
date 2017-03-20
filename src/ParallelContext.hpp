@@ -4,6 +4,11 @@
 #include <vector>
 #include <unordered_map>
 #include <memory>
+#include <time.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #ifdef _RAXML_MPI
 #include <mpi.h>
@@ -82,6 +87,15 @@ private:
 
   static void start_thread(size_t thread_id, const std::function<void()>& thread_main);
   static void parallel_reduce(double * data, size_t size, int op);
+
+public:
+  static std::vector<long> _cpu_times;
+  static std::vector<long> _waiting_times;
+  static std::vector<timespec> _starts; 
+  static std::vector<timespec> _ends;
+  static const char *_step;
+  static void reinit_stats(const char *step);
+  static void print_stats();
 };
 
 #endif /* RAXML_PARALLELCONTEXT_HPP_ */

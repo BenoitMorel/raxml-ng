@@ -16,6 +16,12 @@ std::vector<char> ParallelContext::_parallel_buf;
 std::unordered_map<ThreadIDType, ParallelContext> ParallelContext::_thread_ctx_map;
 MutexType ParallelContext::mtx;
 
+std::vector<long> ParallelContext::_cpu_times;
+std::vector<long> ParallelContext::_waiting_times;
+std::vector<timespec> ParallelContext::_starts; 
+std::vector<timespec> ParallelContext::_ends;
+const char *ParallelContext::_step;
+
 void ParallelContext::init_mpi(int argc, char * argv[])
 {
 #ifdef _RAXML_MPI
@@ -117,10 +123,27 @@ void ParallelContext::thread_barrier()
   }
 }
 
+long diff_time_ns(struct timespec start, struct timespec end) 
+{
+  struct timespec temp;
+  temp.tv_sec = end.tv_sec-start.tv_sec;
+  temp.tv_nsec = end.tv_nsec-start.tv_nsec;
+  return (temp.tv_sec * 1000000000 + temp.tv_nsec);
+}
+
 void ParallelContext::thread_reduce(double * data, size_t size, int op)
 {
+  if (_starts.size()) {
+    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &_starts[_thread_id]);
+    _cpu_times[_thread_id] += diff_time_ns(_ends[_thread_id], _starts[_thread_id]);
+  }
   /* synchronize */
   thread_barrier();
+  
+  if (_ends.size()) {
+    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &_ends[_thread_id]);
+    _waiting_times[_thread_id] += diff_time_ns(_starts[_thread_id], _ends[_thread_id]);
+  }
 
   double *double_buf = (double*) _parallel_buf.data();
 
@@ -295,4 +318,46 @@ void ParallelContext::mpi_gather_custom(std::function<int(void*,int)> prepare_se
   UNUSED(process_recv_cb);
 #endif
 }
+  
+void ParallelContext::reinit_stats(const char *step)
+{
+  barrier();
+  if (!_thread_id) {
+    _cpu_times.resize(_num_threads);
+    _waiting_times.resize(_num_threads);
+    _starts.resize(_num_threads);
+    _ends.resize(_num_threads);
+    ParallelContext::_step = step;
+    std::fill(_cpu_times.begin(), _cpu_times.end(), 0);
+    std::fill(_waiting_times.begin(), _waiting_times.end(), 0);
+  }
+  barrier();
+}
+
+void ParallelContext::print_stats()
+{
+  if (_thread_id) {
+    return;
+  }
+  long total_wait = 0;
+  long total_cpu = 0;
+  for (unsigned int i = 0; i < _waiting_times.size(); ++i) {
+    total_wait += _waiting_times[i];
+    total_cpu += _cpu_times[i];
+  }
+  fprintf(stderr, "    busy_ratio: %f\n", double(total_cpu) / double(total_wait + total_cpu));
+  fprintf(stderr, "    stats_step: %s\n", _step); 
+  fprintf(stderr, "    wait_time_ms ");
+  for (unsigned int i = 0; i < _waiting_times.size(); ++i) {
+    fprintf(stderr, " (%u, %ld)", i, _waiting_times[i] / 1000000);
+  }
+  fprintf(stderr, "\n");
+  fprintf(stderr, "    cpu_time_ms ");
+  for (unsigned int i = 0; i < _cpu_times.size(); ++i) {
+    fprintf(stderr, " (%u, %ld)", i, _cpu_times[i] / 1000000);
+  }
+  fprintf(stderr, "\n");
+
+}
+
 

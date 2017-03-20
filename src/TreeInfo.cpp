@@ -432,6 +432,11 @@ pll_partition_t* create_pll_partition(const Options& opts, const PartitionInfo& 
       attrs |= PLL_ATTRIB_PATTERN_TIP;
   }
 
+  if (opts.use_repeats)
+  {
+    attrs |= PLL_ATTRIB_SITES_REPEATS;
+  }
+
   /* part_length doesn't include columns with zero weight */
   const size_t part_length = weights.empty() ? part_region.length :
                              std::count_if(weights.begin() + part_region.start,
