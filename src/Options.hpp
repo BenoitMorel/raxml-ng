@@ -23,7 +23,7 @@ public:
   optimize_model(true), optimize_brlen(true), redo_mode(false), log_level(LogLevel::progress),
   msa_format(FileFormat::autodetect), data_type(DataType::autodetect),
   random_seed(0), start_tree(StartingTree::random), lh_epsilon(DEF_LH_EPSILON), spr_radius(-1),
-  spr_cutoff(1.0), brlen_linkage(PLLMOD_TREE_BRLEN_SCALED), simd_arch(PLL_ATTRIB_ARCH_CPU),
+  spr_cutoff(1.0), brlen_linkage(PLLMOD_TREE_BRLEN_SCALED), simd_arch(PLL_ATTRIB_ARCH_CPU), cuda(false),
   num_searches(1), num_bootstraps(100),
   tree_file(""), msa_file(""), model_file(""), outfile_prefix(""),
   num_threads(1), num_ranks(1)
@@ -55,6 +55,7 @@ public:
   double spr_cutoff;
   int brlen_linkage;
   unsigned int simd_arch;
+  bool cuda;
 
   unsigned int num_searches;
   unsigned int num_bootstraps;

@@ -23,6 +23,7 @@ target_link_libraries (raxml_module ${RAXML_LOCALDEPS_DIR}/lib/libpll_tree.a)
 target_link_libraries (raxml_module ${RAXML_LOCALDEPS_DIR}/lib/libpll_util.a)
 target_link_libraries (raxml_module ${RAXML_LOCALDEPS_DIR}/lib/libpll.a)
 target_link_libraries (raxml_module m)
+target_link_libraries (raxml_module cudart)
 
 if(MPI_FOUND)
 target_link_libraries (raxml_module ${MPI_CXX_LIBRARIES})

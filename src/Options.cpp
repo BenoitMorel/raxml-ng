@@ -128,6 +128,7 @@ std::ostream& operator<<(std::ostream& stream, const Options& opts)
 
 
   stream << "  SIMD kernels: " << get_simd_arch_name(opts.simd_arch) << endl;
+  stream << "  CUDA: " << (opts.cuda ? "ON":"OFF") << endl;
 
   stream << "  parallelization: ";
   if (opts.num_ranks > 1 && opts.num_threads > 1)

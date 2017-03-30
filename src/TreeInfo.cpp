@@ -423,6 +423,10 @@ pll_partition_t* create_pll_partition(const Options& opts, const PartitionInfo& 
     }
   }
 
+  if (opts.cuda) 
+  {
+    attrs |= PLL_ATTRIB_ARCH_CUDA;
+  }
   if (opts.use_tip_inner)
   {
     assert(!(opts.use_prob_msa));

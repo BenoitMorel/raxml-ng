@@ -43,6 +43,7 @@ static struct option long_options[] =
   {"all",                no_argument,       0, 0 },  /*  25 */
   {"bs-trees",           required_argument, 0, 0 },  /*  26 */
   {"redo",               no_argument,       0, 0 },  /*  27 */
+  {"cuda",               no_argument,       0, 0 },  /*  28 */
 
   { 0, 0, 0, 0 }
 };
@@ -104,7 +105,7 @@ void CommandLineParser::parse_options(int argc, char** argv, Options &opts)
 
   // autodetect CPU instruction set and use respective SIMD kernels
   opts.simd_arch = sysutil_simd_autodetect();
-
+  opts.cuda = false;
   opts.num_searches = 0;
 
   opts.redo_mode = false;
@@ -359,6 +360,9 @@ void CommandLineParser::parse_options(int argc, char** argv, Options &opts)
         break;
       case 27:
         opts.redo_mode = true;
+        break;
+      case 28:
+        opts.cuda = true;
         break;
       default:
         throw  OptionException("Internal error in option parsing");
