@@ -35,4 +35,17 @@ protected:
                                                       size_t num_procs);
 };
 
+class FakeLoadBalancer : public LoadBalancer
+{
+protected:
+  virtual PartitionAssignmentList compute_assignments(const PartitionAssignment& part_sizes,
+                                                      size_t num_procs);
+};
+
+class CyclicLoadBalancer : public LoadBalancer
+{
+protected:
+  virtual PartitionAssignmentList compute_assignments(const PartitionAssignment& part_sizes,
+                                                      size_t num_procs);
+};
 #endif /* RAXML_LOADBALANCER_HPP_ */

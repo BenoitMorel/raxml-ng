@@ -473,4 +473,18 @@ pll_partition_t* create_pll_partition(const Options& opts, const PartitionInfo& 
   return partition;
 }
 
+void TreeInfo::print_clv_sizes() const
+{
+  unsigned int total_size = 0;
+  unsigned int max_total_size = 0;
+  for (unsigned int i = 0; i < _pll_treeinfo->partition_count; ++i) {
+    pll_partition_t *p = _pll_treeinfo->partitions[i];
+    if (!p)
+      continue;
+    total_size += pll_get_clv_allocated_size(_pll_treeinfo->partitions[i]);
+    max_total_size += p->clv_buffers * p->sites * p->states * p->rate_cats * sizeof(double);
+  }
+  LOG_PROGR <<  "clv size: " << total_size;
+  LOG_PROGR <<  " (max clv size: " << max_total_size << ")" << std::endl;
+}
 

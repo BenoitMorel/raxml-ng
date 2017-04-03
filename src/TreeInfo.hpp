@@ -55,6 +55,7 @@ public:
   double optimize_branches(double lh_epsilon, double brlen_smooth_factor);
   double spr_round(spr_round_params& params);
 
+  void print_clv_sizes() const;
 private:
   pllmod_treeinfo_t * _pll_treeinfo;
   IDSet _parts_master;
