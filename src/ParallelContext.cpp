@@ -345,18 +345,18 @@ void ParallelContext::print_stats()
     total_wait += _waiting_times[i];
     total_cpu += _cpu_times[i];
   }
-  fprintf(stderr, "    busy_ratio: %f\n", double(total_cpu) / double(total_wait + total_cpu));
-  fprintf(stderr, "    stats_step: %s\n", _step); 
-  fprintf(stderr, "    wait_time_ms ");
+  LOG_PROGR <<  "    busy_ratio: " << double(total_cpu) / double(total_wait + total_cpu) << std::endl;
+  LOG_PROGR <<  "    stats_step: " << _step << std::endl; 
+  LOG_PROGR << "    wait_time_ms ";
   for (unsigned int i = 0; i < _waiting_times.size(); ++i) {
-    fprintf(stderr, " (%u, %ld)", i, _waiting_times[i] / 1000000);
+    LOG_PROGR << " (" << i << ", " << _waiting_times[i] / 1000000 << ")";
   }
-  fprintf(stderr, "\n");
-  fprintf(stderr, "    cpu_time_ms ");
+  LOG_PROGR  << std::endl;
+  LOG_PROGR  << "    cpu_time_ms ";
   for (unsigned int i = 0; i < _cpu_times.size(); ++i) {
-    fprintf(stderr, " (%u, %ld)", i, _cpu_times[i] / 1000000);
+    LOG_PROGR << " (" << i << ", " << _cpu_times[i] / 1000000 << ")";
   }
-  fprintf(stderr, "\n");
+  LOG_PROGR << std::endl;
 
 }
 
