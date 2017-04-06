@@ -75,19 +75,15 @@ double Optimizer::optimize_topology(TreeInfo& treeinfo, CheckpointManager& cm)
   {
     cm.update_and_write(treeinfo);
     LOG_PROGRESS(loglh) << "Initial branch length optimization" << endl;
-    ParallelContext::reinit_stats("initial_blo");
     loglh = treeinfo.optimize_branches(fast_modopt_eps, 1);
-    ParallelContext::print_stats();
   }
 
   /* Initial fast model optimization */
   if (do_step(CheckpointStep::modOpt1))
   {
     cm.update_and_write(treeinfo);
-    ParallelContext::reinit_stats("modelopt1");
     LOG_PROGRESS(loglh) << "Model parameter optimization (eps = " << fast_modopt_eps << ")" << endl;
     loglh = optimize(treeinfo, fast_modopt_eps);
-    ParallelContext::print_stats();
   //  print_model_params(treeinfo, useropt);
 
     /* start spr rounds from the beginning */
@@ -124,11 +120,9 @@ double Optimizer::optimize_topology(TreeInfo& treeinfo, CheckpointManager& cm)
         cm.update_and_write(treeinfo);
 
         ++iter;
-        ParallelContext::reinit_stats("autodetect_spr");
         LOG_PROGRESS(best_loglh) << "AUTODETECT spr round " << iter << " (radius: " <<
             spr_params.radius_max << ")" << endl;
         loglh = treeinfo.spr_round(spr_params);
-        ParallelContext::print_stats();
 
         if (!loglh)
           throw runtime_error("ERROR in SPR round: " + string(pll_errmsg));
@@ -155,11 +149,9 @@ double Optimizer::optimize_topology(TreeInfo& treeinfo, CheckpointManager& cm)
     cm.update_and_write(treeinfo);
 
     /* optimize model parameters a bit more thoroughly */
-    ParallelContext::reinit_stats("modelopt2");
     LOG_PROGRESS(loglh) << "Model parameter optimization (eps = " <<
                                                             interim_modopt_eps << ")" << endl;
     loglh = optimize(treeinfo, interim_modopt_eps);
-    ParallelContext::print_stats();
 
     /* reset iteration counter for fast SPRs */
     iter = 0;
@@ -182,11 +174,9 @@ double Optimizer::optimize_topology(TreeInfo& treeinfo, CheckpointManager& cm)
       cm.update_and_write(treeinfo);
       ++iter;
       old_loglh = loglh;
-      ParallelContext::reinit_stats(spr_params.thorough ? "spr_SLOW_1" : "spr_FAST_1");
       LOG_PROGRESS(old_loglh) << (spr_params.thorough ? "SLOW" : "FAST") <<
           " spr round " << iter << " (radius: " << spr_params.radius_max << ")" << endl;
       loglh = treeinfo.spr_round(spr_params);
-      ParallelContext::print_stats();
 
       /* optimize ALL branches */
       loglh = treeinfo.optimize_branches(_lh_epsilon, 1);
@@ -197,10 +187,8 @@ double Optimizer::optimize_topology(TreeInfo& treeinfo, CheckpointManager& cm)
   if (do_step(CheckpointStep::modOpt3))
   {
     cm.update_and_write(treeinfo);
-    ParallelContext::reinit_stats("modelopt3");
     LOG_PROGRESS(loglh) << "Model parameter optimization (eps = " << 1.0 << ")" << endl;
     loglh = optimize(treeinfo, 1.0);
-    ParallelContext::print_stats();
 
     /* init slow SPRs */
     spr_params.thorough = 1;
@@ -216,11 +204,9 @@ double Optimizer::optimize_topology(TreeInfo& treeinfo, CheckpointManager& cm)
       cm.update_and_write(treeinfo);
       ++iter;
       old_loglh = loglh;
-      ParallelContext::reinit_stats(spr_params.thorough ? "spr_SLOW_2" : "spr_FAST_2");
       LOG_PROGRESS(old_loglh) << (spr_params.thorough ? "SLOW" : "FAST") <<
           " spr round " << iter << " (radius: " << spr_params.radius_max << ")" << endl;
       loglh = treeinfo.spr_round(spr_params);
-      ParallelContext::print_stats();
 
       /* optimize ALL branches */
       loglh = treeinfo.optimize_branches(_lh_epsilon, 1);
@@ -248,10 +234,8 @@ double Optimizer::optimize_topology(TreeInfo& treeinfo, CheckpointManager& cm)
   if (do_step(CheckpointStep::modOpt4))
   {
     cm.update_and_write(treeinfo);
-    ParallelContext::reinit_stats("modelopt4");
     LOG_PROGRESS(loglh) << "Model parameter optimization (eps = " << _lh_epsilon << ")" << endl;
     loglh = optimize(treeinfo, _lh_epsilon);
-    ParallelContext::print_stats();
   }
 
 

@@ -133,18 +133,9 @@ long diff_time_ns(struct timespec start, struct timespec end)
 
 void ParallelContext::thread_reduce(double * data, size_t size, int op)
 {
-  if (_starts.size()) {
-    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &_starts[_thread_id]);
-    _cpu_times[_thread_id] += diff_time_ns(_ends[_thread_id], _starts[_thread_id]);
-  }
   /* synchronize */
   thread_barrier();
   
-  if (_ends.size()) {
-    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &_ends[_thread_id]);
-    _waiting_times[_thread_id] += diff_time_ns(_starts[_thread_id], _ends[_thread_id]);
-  }
-
   double *double_buf = (double*) _parallel_buf.data();
 
   /* collect data from threads */
