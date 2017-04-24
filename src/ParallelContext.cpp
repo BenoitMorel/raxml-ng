@@ -1,7 +1,7 @@
 #include "ParallelContext.hpp"
 
 #include "Options.hpp"
-
+#include <limits>
 using namespace std;
 
 // TODO: estimate based on #threads and #partitions?
@@ -20,6 +20,9 @@ std::vector<long> ParallelContext::_cpu_times;
 std::vector<long> ParallelContext::_waiting_times;
 std::vector<timespec> ParallelContext::_starts; 
 std::vector<timespec> ParallelContext::_ends;
+long ParallelContext::_total_cpu_time = 0;
+long ParallelContext::_total_waiting_time = 0;
+long ParallelContext::_total_min_waiting_time = 0;
 const char *ParallelContext::_step;
 
 void ParallelContext::init_mpi(int argc, char * argv[])
@@ -199,7 +202,13 @@ void ParallelContext::parallel_reduce(double * data, size_t size, int op)
 #ifdef _RAXML_MPI
   if (_num_ranks > 1)
   {
+    if (_starts.size()) {
+      clock_gettime(CLOCK_THREAD_CPUTIME_ID, &_starts[_rank_id]);
+      _cpu_times[_rank_id] += diff_time_ns(_ends[_rank_id], _starts[_rank_id]);
+    }
+    
     thread_barrier();
+   
 
     if (_thread_id == 0)
     {
@@ -220,6 +229,11 @@ void ParallelContext::parallel_reduce(double * data, size_t size, int op)
       MPI_Allreduce(data, _parallel_buf.data(), size, MPI_DOUBLE, reduce_op, MPI_COMM_WORLD);
       memcpy(data, _parallel_buf.data(), size * sizeof(double));
 #endif
+    }
+    
+    if (_ends.size()) {
+      clock_gettime(CLOCK_THREAD_CPUTIME_ID, &_ends[_rank_id]);
+      _waiting_times[_rank_id] += diff_time_ns(_starts[_rank_id], _ends[_rank_id]);
     }
 
     if (_num_threads > 1)
@@ -322,30 +336,44 @@ void ParallelContext::mpi_gather_custom(std::function<int(void*,int)> prepare_se
 void ParallelContext::reinit_stats(const char *step)
 {
   barrier();
-  if (!_thread_id) {
-    _cpu_times.resize(_num_threads);
-    _waiting_times.resize(_num_threads);
-    _starts.resize(_num_threads);
-    _ends.resize(_num_threads);
+  unsigned int threads = std::max(_num_threads, _num_ranks);
+    _cpu_times.resize(threads);
+    _waiting_times.resize(threads);
+    _starts.resize(threads);
+    _ends.resize(threads);
     ParallelContext::_step = step;
     std::fill(_cpu_times.begin(), _cpu_times.end(), 0);
     std::fill(_waiting_times.begin(), _waiting_times.end(), 0);
-  }
   barrier();
 }
 
 void ParallelContext::print_stats()
 {
-  if (_thread_id) {
+  
+  MPI_Gather(&_cpu_times[_rank_id], 1, MPI_LONG_LONG, &_cpu_times[0], 1, MPI_LONG_LONG, 0, MPI_COMM_WORLD); 
+  MPI_Gather(&_waiting_times[_rank_id], 1, MPI_LONG_LONG, &_waiting_times[0], 1, MPI_LONG_LONG, 0, MPI_COMM_WORLD); 
+  if (_thread_id || _rank_id ) {
     return;
   }
   long total_wait = 0;
   long total_cpu = 0;
+  long min_wait = std::numeric_limits<long>::max();
+  long max_elapsed = 0;
   for (unsigned int i = 0; i < _waiting_times.size(); ++i) {
     total_wait += _waiting_times[i];
     total_cpu += _cpu_times[i];
+    min_wait = std::min(min_wait, _waiting_times[i]);
   }
-  LOG_PROGR <<  "    busy_ratio: " << double(total_cpu) / double(total_wait + total_cpu) << std::endl;
+  _total_waiting_time += total_wait;
+  _total_cpu_time += total_cpu;
+  _total_min_waiting_time += min_wait;
+  double average_unavoidable_wait = double(_total_min_waiting_time) * double(_num_ranks) / double(_total_waiting_time + _total_cpu_time);
+  double average_busy_ratio = double(_total_cpu_time) / double(_total_waiting_time + _total_cpu_time);
+  //LOG_PROGR <<  "    unavoidable wait " <<  double(min_wait) * double(_num_ranks) / (double(total_wait + total_cpu)) << std::endl;
+  LOG_PROGR <<  "    average unavoidable wait " <<  average_unavoidable_wait << std::endl;
+  //LOG_PROGR <<  "    busy_ratio: " << double(total_cpu) / double(total_wait + total_cpu) << std::endl;
+  LOG_PROGR <<  "    average busy_ratio: " << average_busy_ratio << std::endl;
+  LOG_PROGR <<  "    average possible speedup " << (1.0 - average_busy_ratio - average_unavoidable_wait) * 100.0 << "%" << std::endl; 
   LOG_PROGR <<  "    stats_step: " << _step << std::endl; 
   LOG_PROGR << "    wait_time_ms ";
   for (unsigned int i = 0; i < _waiting_times.size(); ++i) {

@@ -4,6 +4,7 @@
 #include <stdexcept>
 
 #include "LoadBalancer.hpp"
+#include "log.hpp"
 
 using namespace std;
 
@@ -182,6 +183,8 @@ PartitionAssignmentList KassianLoadBalancer::compute_assignments(const Partition
       }
     }
   }
+  LOG_PROGR << "Data distribution : " << std::endl;
+  LOG_PROGR << bins << std::endl;
 
   return bins;
 }

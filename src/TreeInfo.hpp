@@ -55,9 +55,15 @@ public:
   double optimize_branches(double lh_epsilon, double brlen_smooth_factor);
   double spr_round(spr_round_params& params);
 
+  void activatebenoitprint() {
+    benoitprint = true;
+  }
+
 private:
   pllmod_treeinfo_t * _pll_treeinfo;
   IDSet _parts_master;
+  
+  bool benoitprint;
 
   void init(const Options &opts, const Tree& tree, const PartitionedMSA& parted_msa,
             const PartitionAssignment& part_assign, const std::vector<uintVector>& site_weights);

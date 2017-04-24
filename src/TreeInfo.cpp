@@ -22,6 +22,7 @@ void TreeInfo::init(const Options &opts, const Tree& tree, const PartitionedMSA&
                     const PartitionAssignment& part_assign,
                     const std::vector<uintVector>& site_weights)
 {
+  benoitprint = false;
   _pll_treeinfo = pllmod_treeinfo_create(tree.pll_utree_copy(), tree.num_tips(),
                                          parted_msa.part_count(), opts.brlen_linkage);
 
@@ -238,6 +239,11 @@ double TreeInfo::optimize_params(int params_to_optimize, double lh_epsilon)
 
 double TreeInfo::spr_round(spr_round_params& params)
 {
+  static int calls = 0;
+  if (benoitprint) {
+    std::cerr << "calls " << calls++ << std::endl;
+  }
+
   return pllmod_algo_spr_round(_pll_treeinfo, params.radius_min, params.radius_max,
                                params.ntopol_keep, params.thorough,
                                RAXML_BRLEN_MIN, RAXML_BRLEN_MAX, RAXML_BRLEN_SMOOTHINGS,
@@ -423,6 +429,11 @@ pll_partition_t* create_pll_partition(const Options& opts, const PartitionInfo& 
     }
   }
 
+  if (ParallelContext::_rank_id == 203) {
+    std::cerr << "active traces for rank " << ParallelContext::_rank_id <<std::endl;
+    //attrs |= 1 << 12; //trace partials
+    //attrs |= 1 << 13; // trace sumtables
+  }
   if (opts.use_tip_inner)
   {
     assert(!(opts.use_prob_msa));

@@ -122,7 +122,9 @@ double Optimizer::optimize_topology(TreeInfo& treeinfo, CheckpointManager& cm)
       while (spr_params.radius_min < radius_limit)
       {
         cm.update_and_write(treeinfo);
-
+        if (ParallelContext::_rank_id == 252) {
+          treeinfo.activatebenoitprint();
+        }
         ++iter;
         ParallelContext::reinit_stats("autodetect_spr");
         LOG_PROGRESS(best_loglh) << "AUTODETECT spr round " << iter << " (radius: " <<
