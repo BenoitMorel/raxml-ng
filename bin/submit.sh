@@ -1,18 +1,18 @@
 #!/bin/bash
-#SBATCH -o ng_T16_%j.out
-#SBATCH -N 1
-#SBATCH -n 2
+#SBATCH -o ng_%j.out
+#SBATCH -N 32
+#SBATCH -n 512
 #SBATCH -B 2:8:1
 #SBATCH --threads-per-core=1
 #SBATCH --cpus-per-task=1
-#SBATCH -t 24:00:00
+#SBATCH -t 2:00:00
 #  blabla SBATCH --qos=debug
 # datas: 128  1kyte_hyme  404  59  antl_1_1_aa  antl_1_1_nt2  kyte  para_1_aa   para_1_nt
 
 mpi=1
 jem=1
-threads=2
-data=sativa
+threads=512
+data=para_1_nt
 datadirprefix=
 datadirsuffix=
 optindex=1 #0 repeats

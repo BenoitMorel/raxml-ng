@@ -17,12 +17,13 @@ std::unordered_map<ThreadIDType, ParallelContext> ParallelContext::_thread_ctx_m
 MutexType ParallelContext::mtx;
 
 std::vector<long> ParallelContext::_cpu_times;
-std::vector<long> ParallelContext::_waiting_times;
-std::vector<timespec> ParallelContext::_starts; 
-std::vector<timespec> ParallelContext::_ends;
+std::vector<long> ParallelContext::_sync_times;
+std::vector<long> ParallelContext::_reduce_times;
+timespec ParallelContext::_last_time;
 long ParallelContext::_total_cpu_time = 0;
-long ParallelContext::_total_waiting_time = 0;
-long ParallelContext::_total_min_waiting_time = 0;
+long ParallelContext::_total_sync_time = 0;
+long ParallelContext::_total_reduce_time = 0;
+long ParallelContext::_total_min_sync_time = 0;
 const char *ParallelContext::_step;
 
 void ParallelContext::init_mpi(int argc, char * argv[])
@@ -136,16 +137,19 @@ long diff_time_ns(struct timespec start, struct timespec end)
 
 void ParallelContext::thread_reduce(double * data, size_t size, int op)
 {
-  if (_starts.size()) {
-    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &_starts[_thread_id]);
-    _cpu_times[_thread_id] += diff_time_ns(_ends[_thread_id], _starts[_thread_id]);
+  timespec new_time;
+  if (_cpu_times.size()) {
+    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &new_time);
+    _cpu_times[_thread_id] += diff_time_ns(_last_time, new_time);
+    _last_time = new_time;
   }
   /* synchronize */
   thread_barrier();
-  
-  if (_ends.size()) {
-    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &_ends[_thread_id]);
-    _waiting_times[_thread_id] += diff_time_ns(_starts[_thread_id], _ends[_thread_id]);
+ 
+  if (_cpu_times.size()) {
+    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &new_time);
+    _sync_times[_thread_id] += diff_time_ns(_last_time, new_time);
+    _last_time = new_time;
   }
 
   double *double_buf = (double*) _parallel_buf.data();
@@ -187,6 +191,11 @@ void ParallelContext::thread_reduce(double * data, size_t size, int op)
     }
   }
 
+  if (_cpu_times.size()) {
+    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &new_time);
+    _reduce_times[_thread_id] += diff_time_ns(_last_time, new_time);
+    _last_time = new_time;
+  }
   //needed?
 //  parallel_barrier(useropt);
 }
@@ -194,6 +203,7 @@ void ParallelContext::thread_reduce(double * data, size_t size, int op)
 
 void ParallelContext::parallel_reduce(double * data, size_t size, int op)
 {
+  timespec new_time;
 #ifdef _RAXML_PTHREADS
   if (_num_threads > 1)
     thread_reduce(data, size, op);
@@ -202,12 +212,21 @@ void ParallelContext::parallel_reduce(double * data, size_t size, int op)
 #ifdef _RAXML_MPI
   if (_num_ranks > 1)
   {
-    if (_starts.size()) {
-      clock_gettime(CLOCK_THREAD_CPUTIME_ID, &_starts[_rank_id]);
-      _cpu_times[_rank_id] += diff_time_ns(_ends[_rank_id], _starts[_rank_id]);
+    if (_cpu_times.size()) {
+      clock_gettime(CLOCK_THREAD_CPUTIME_ID, &new_time);
+      _cpu_times[_rank_id] += diff_time_ns(_last_time, new_time);
+      _last_time = new_time;
     }
     
     thread_barrier();
+  
+    /* this is temporary for load balancing statistics */
+    mpi_barrier();
+    if (_cpu_times.size()) {
+      clock_gettime(CLOCK_THREAD_CPUTIME_ID, &new_time);
+      _sync_times[_rank_id] += diff_time_ns(_last_time, new_time);
+      _last_time = new_time;
+    }
    
 
     if (_thread_id == 0)
@@ -230,11 +249,12 @@ void ParallelContext::parallel_reduce(double * data, size_t size, int op)
       memcpy(data, _parallel_buf.data(), size * sizeof(double));
 #endif
     }
-    
-    if (_ends.size()) {
-      clock_gettime(CLOCK_THREAD_CPUTIME_ID, &_ends[_rank_id]);
-      _waiting_times[_rank_id] += diff_time_ns(_starts[_rank_id], _ends[_rank_id]);
+    if (_cpu_times.size()) {
+      clock_gettime(CLOCK_THREAD_CPUTIME_ID, &new_time);
+      _reduce_times[_rank_id] += diff_time_ns(_last_time, new_time);
+      _last_time = new_time;
     }
+    
 
     if (_num_threads > 1)
       thread_broadcast(0, data, size * sizeof(double));
@@ -338,54 +358,73 @@ void ParallelContext::reinit_stats(const char *step)
   barrier();
   unsigned int threads = std::max(_num_threads, _num_ranks);
     _cpu_times.resize(threads);
-    _waiting_times.resize(threads);
-    _starts.resize(threads);
-    _ends.resize(threads);
+    _sync_times.resize(threads);
+    _reduce_times.resize(threads);
+    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &_last_time);
     ParallelContext::_step = step;
     std::fill(_cpu_times.begin(), _cpu_times.end(), 0);
-    std::fill(_waiting_times.begin(), _waiting_times.end(), 0);
+    std::fill(_sync_times.begin(), _sync_times.end(), 0);
+    std::fill(_reduce_times.begin(), _reduce_times.end(), 0);
   barrier();
 }
 
 void ParallelContext::print_stats()
 {
-  
+
   MPI_Gather(&_cpu_times[_rank_id], 1, MPI_LONG_LONG, &_cpu_times[0], 1, MPI_LONG_LONG, 0, MPI_COMM_WORLD); 
-  MPI_Gather(&_waiting_times[_rank_id], 1, MPI_LONG_LONG, &_waiting_times[0], 1, MPI_LONG_LONG, 0, MPI_COMM_WORLD); 
+  MPI_Gather(&_sync_times[_rank_id], 1, MPI_LONG_LONG, &_sync_times[0], 1, MPI_LONG_LONG, 0, MPI_COMM_WORLD); 
+  MPI_Gather(&_reduce_times[_rank_id], 1, MPI_LONG_LONG, &_reduce_times[0], 1, MPI_LONG_LONG, 0, MPI_COMM_WORLD); 
   if (_thread_id || _rank_id ) {
     return;
   }
-  long total_wait = 0;
-  long total_cpu = 0;
-  long min_wait = std::numeric_limits<long>::max();
-  long max_elapsed = 0;
-  for (unsigned int i = 0; i < _waiting_times.size(); ++i) {
-    total_wait += _waiting_times[i];
-    total_cpu += _cpu_times[i];
-    min_wait = std::min(min_wait, _waiting_times[i]);
+
+  long allcores_cpu_time = 0;
+  long allcores_sync_time = 0;
+  long allcores_reduce_time = 0;
+  long min_sync_time = std::numeric_limits<long>::max();
+  for (unsigned int i = 0; i < _cpu_times.size(); ++i) {
+    allcores_cpu_time += _cpu_times[i];
+    allcores_sync_time += _sync_times[i];
+    allcores_reduce_time += _reduce_times[i];
+    min_sync_time = std::min(min_sync_time, _sync_times[i]);
   }
-  _total_waiting_time += total_wait;
-  _total_cpu_time += total_cpu;
-  _total_min_waiting_time += min_wait;
-  double average_unavoidable_wait = double(_total_min_waiting_time) * double(_num_ranks) / double(_total_waiting_time + _total_cpu_time);
-  double average_busy_ratio = double(_total_cpu_time) / double(_total_waiting_time + _total_cpu_time);
-  //LOG_PROGR <<  "    unavoidable wait " <<  double(min_wait) * double(_num_ranks) / (double(total_wait + total_cpu)) << std::endl;
-  LOG_PROGR <<  "    average unavoidable wait " <<  average_unavoidable_wait << std::endl;
-  //LOG_PROGR <<  "    busy_ratio: " << double(total_cpu) / double(total_wait + total_cpu) << std::endl;
-  LOG_PROGR <<  "    average busy_ratio: " << average_busy_ratio << std::endl;
-  LOG_PROGR <<  "    average possible speedup " << (1.0 - average_busy_ratio - average_unavoidable_wait) * 100.0 << "%" << std::endl; 
-  LOG_PROGR <<  "    stats_step: " << _step << std::endl; 
-  LOG_PROGR << "    wait_time_ms ";
-  for (unsigned int i = 0; i < _waiting_times.size(); ++i) {
-    LOG_PROGR << " (" << i << ", " << _waiting_times[i] / 1000000 << ")";
-  }
-  LOG_PROGR  << std::endl;
-  LOG_PROGR  << "    cpu_time_ms ";
+  _total_cpu_time += allcores_cpu_time;
+  _total_sync_time += allcores_sync_time;
+  _total_reduce_time += allcores_reduce_time;
+  _total_min_sync_time += min_sync_time;
+
+  long allcores_time = allcores_cpu_time + allcores_sync_time + allcores_reduce_time;
+  long total_time = _total_cpu_time + _total_sync_time + _total_reduce_time;
+    
+  LOG_PROGR << "    stats_step: " << _step << std::endl; 
+  LOG_PROGR << "    step cpu ratio: "    << double(allcores_cpu_time) / double(allcores_time) << std::endl;
+  LOG_PROGR << "    step sync ratio: "    << double(allcores_sync_time) / double(allcores_time) << std::endl;
+  LOG_PROGR << "    step reduce ratio: "    << double(allcores_reduce_time) / double(allcores_time) << std::endl;
+  LOG_PROGR << "    step irreductible sync ratio: "    << double(min_sync_time) / double(allcores_time) << std::endl;
+  LOG_PROGR << "    total cpu ratio: "    << double(_total_cpu_time) / double(total_time) << std::endl;
+  LOG_PROGR << "    total sync ratio: "    << double(_total_sync_time) / double(total_time) << std::endl;
+  LOG_PROGR << "    total reduce ratio: "    << double(_total_reduce_time) / double(total_time) << std::endl;
+  LOG_PROGR << "    total irreductible sync ratio: "    << double(_total_min_sync_time) / double(total_time) << std::endl;
+
+
+  LOG_PROGR << "    detailed cpu_time_ms ";
   for (unsigned int i = 0; i < _cpu_times.size(); ++i) {
     LOG_PROGR << " (" << i << ", " << _cpu_times[i] / 1000000 << ")";
   }
-  LOG_PROGR << std::endl;
-
+  LOG_PROGR  << std::endl;
+ 
+  LOG_PROGR << "    detailed sync_time_ms ";
+  for (unsigned int i = 0; i < _sync_times.size(); ++i) {
+    LOG_PROGR << " (" << i << ", " << _sync_times[i] / 1000000 << ")";
+  }
+  LOG_PROGR  << std::endl;
+ 
+  LOG_PROGR << "    detailed reduce_time_ms ";
+  for (unsigned int i = 0; i < _reduce_times.size(); ++i) {
+    LOG_PROGR << " (" << i << ", " << _reduce_times[i] / 1000000 << ")";
+  }
+  LOG_PROGR  << std::endl;
+ 
 }
 
 

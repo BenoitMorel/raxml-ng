@@ -90,12 +90,13 @@ public:
 
 public:
   static std::vector<long> _cpu_times;
-  static std::vector<long> _waiting_times;
-  static std::vector<timespec> _starts; 
-  static std::vector<timespec> _ends;
+  static std::vector<long> _sync_times;
+  static std::vector<long> _reduce_times;
+  static timespec _last_time; 
   static long _total_cpu_time;
-  static long _total_waiting_time;
-  static long _total_min_waiting_time;
+  static long _total_sync_time;
+  static long _total_reduce_time;
+  static long _total_min_sync_time;
   static const char *_step;
   static void reinit_stats(const char *step);
   static void print_stats();
