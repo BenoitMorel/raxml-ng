@@ -54,7 +54,8 @@ public:
   { return optimize_params(PLLMOD_OPT_PARAM_ALL & ~PLLMOD_OPT_PARAM_BRANCHES_ITERATIVE, lh_epsilon); } ;
   double optimize_branches(double lh_epsilon, double brlen_smooth_factor);
   double spr_round(spr_round_params& params);
-
+  
+  double  recompute_likelihood();
 private:
   pllmod_treeinfo_t * _pll_treeinfo;
   IDSet _parts_master;

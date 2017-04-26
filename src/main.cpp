@@ -29,6 +29,7 @@
 #include "Options.hpp"
 #include "CommandLineParser.hpp"
 #include "Optimizer.hpp"
+#include "Bench.hpp"
 #include "PartitionInfo.hpp"
 #include "TreeInfo.hpp"
 #include "io/file_io.hpp"
@@ -560,6 +561,20 @@ void thread_main(const RaxmlInstance& instance, CheckpointManager& cm)
   /* get partitions assigned to the current thread */
   auto const& part_assign = instance.proc_part_assign.at(ParallelContext::proc_id());
 
+  if (opts.command == Command::bench)
+  {
+    size_t start_tree_num = cm.checkpoint().ml_trees.size();
+    LOG_INFO << "\nStarting bench" << endl;
+    for (const auto& tree: instance.start_trees)
+    {
+      assert(!tree.empty());
+      start_tree_num++;
+      treeinfo.reset(new TreeInfo(opts, tree, master_msa, part_assign));
+      Bench::bench(*treeinfo);
+    }
+  }
+
+
   if ((opts.command == Command::search || opts.command == Command::all) &&
       !instance.start_trees.empty())
   {
@@ -587,6 +602,7 @@ void thread_main(const RaxmlInstance& instance, CheckpointManager& cm)
   //      treeinfo.reset(new TreeInfo(opts, tree, master_msa, part_assign));
   //    else
   //      treeinfo->tree(tree);
+      
 
       Optimizer optimizer(opts);
       if (opts.command == Command::search || opts.command == Command::all)
@@ -752,6 +768,7 @@ int main(int argc, char** argv)
   {
     case Command::evaluate:
     case Command::search:
+    case Command::bench:
     case Command::bootstrap:
     case Command::all:
     {

@@ -16,6 +16,7 @@ enum class Command
   evaluate,
   search,
   bootstrap,
+  bench,
   all
 };
 

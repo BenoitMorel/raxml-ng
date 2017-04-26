@@ -474,3 +474,15 @@ pll_partition_t* create_pll_partition(const Options& opts, const PartitionInfo& 
 }
 
 
+double  TreeInfo::recompute_likelihood() 
+{
+  if (!_pll_treeinfo) 
+  {
+    throw runtime_error("ERROR NULL TREE INFO");
+  }
+  //pllmod_treeinfo_invalidate_all(_pll_treeinfo);
+  return pllmod_treeinfo_compute_loglh(_pll_treeinfo, 0);
+}
+
+
+

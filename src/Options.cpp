@@ -67,11 +67,13 @@ std::ostream& operator<<(std::ostream& stream, const Options& opts)
     case Command::search:
       stream << "ML tree search";
       break;
+    case Command::bench:
+      stream << "ML tree bench";
+      break;
     case Command::evaluate:
       stream << "Evaluate tree likelihood";
       break;
     case Command::bootstrap:
-      stream << "Bootstrapping";
       break;
     case Command::all:
       stream << "ML tree search + bootstrapping";

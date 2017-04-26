@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -o ng_T16_%j.out
-#SBATCH -N 2
-#SBATCH -n 32
+#SBATCH -N 1
+#SBATCH -n 16
 #SBATCH -B 2:8:1
 #SBATCH --threads-per-core=1
 #SBATCH --cpus-per-task=1
@@ -11,8 +11,8 @@
 
 mpi=1
 jem=1
-threads=32
-data=antl_1_1_nt2
+threads=16
+data=404
 datadirprefix=
 datadirsuffix=
 optindex=1 #0 repeats
@@ -51,9 +51,9 @@ fi
 opt=("--repeats on" "" "--tip-inner off")
 optname=("repeats" "tipinner" "noopt")
 
-datadir=mpiresults/${datadirprefix}${data}_${optname[$optindex]}_T$threads${mpisuffix}${jemsuffix}$datadirsuffix
+datadir=fulltreetrav/${datadirprefix}${data}_${optname[$optindex]}_T$threads${mpisuffix}${jemsuffix}$datadirsuffix
 rm -r $datadir
 mkdir -p $datadir
 
-LD_PRELOAD=$preload $mpirun ./raxml-ng-mpi --search --seed=$seed --msa data/$data/${data}.phy --model data/$data/${data}.part --simd AVX --threads $mpithreads  ${opt[$optindex]}   --prefix ${datadir}/$data
+LD_PRELOAD=$preload $mpirun ./raxml-ng-mpi --redo --bench --seed=$seed --msa data/$data/${data}.phy --model data/$data/${data}.part --simd AVX --threads $mpithreads  ${opt[$optindex]}   --prefix ${datadir}/$data
 
