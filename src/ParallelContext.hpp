@@ -56,6 +56,7 @@ public:
   static size_t thread_id() { return _thread_id; }
   static size_t proc_id() { return _rank_id * _num_threads + _thread_id; }
 
+  static void gather(double value, double *dest, unsigned int rank);
   static void barrier();
   static void thread_barrier();
   static void mpi_barrier();
@@ -74,7 +75,7 @@ public:
   private:
     LockType _lock;
   };
-private:
+public:
   static std::vector<ThreadType> _threads;
   static size_t _num_threads;
   static size_t _num_ranks;
@@ -93,6 +94,9 @@ public:
   static std::vector<long> _waiting_times;
   static std::vector<timespec> _starts; 
   static std::vector<timespec> _ends;
+  static long _total_cpu_time;
+  static long _total_waiting_time;
+  static long _total_min_waiting_time;
   static const char *_step;
   static void reinit_stats(const char *step);
   static void print_stats();

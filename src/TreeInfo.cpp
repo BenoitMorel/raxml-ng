@@ -474,15 +474,22 @@ pll_partition_t* create_pll_partition(const Options& opts, const PartitionInfo& 
 }
 
 
-double  TreeInfo::recompute_likelihood() 
+double  TreeInfo::recompute_likelihood(unsigned int update_repeats, long &total_time_ns, long &update_time_ns) 
 {
   if (!_pll_treeinfo) 
   {
     throw runtime_error("ERROR NULL TREE INFO");
   }
+  _pll_treeinfo->partial_iterations = 100;
   //pllmod_treeinfo_invalidate_all(_pll_treeinfo);
-  return pllmod_treeinfo_compute_loglh(_pll_treeinfo, 0);
+  return pllmod_treeinfo_compute_loglh_benoit(_pll_treeinfo, update_repeats, 0, &total_time_ns, &update_time_ns);
 }
 
 
+double TreeInfo::get_repeats_compression()
+{
+  unsigned int sites, identifiers;
+  pllmod_treeinfo_repeats_stats(_pll_treeinfo, &sites, &identifiers); 
+  return double(identifiers)/double(sites);
+}
 

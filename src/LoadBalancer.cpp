@@ -4,6 +4,7 @@
 #include <stdexcept>
 
 #include "LoadBalancer.hpp"
+#include "Optimizer.hpp"
 
 using namespace std;
 
@@ -182,6 +183,6 @@ PartitionAssignmentList KassianLoadBalancer::compute_assignments(const Partition
       }
     }
   }
-
+  LOG_INFO << bins << std::endl;
   return bins;
 }

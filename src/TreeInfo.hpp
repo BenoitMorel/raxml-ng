@@ -55,7 +55,8 @@ public:
   double optimize_branches(double lh_epsilon, double brlen_smooth_factor);
   double spr_round(spr_round_params& params);
   
-  double  recompute_likelihood();
+  double  recompute_likelihood(unsigned int update_repeats, long &total_time_ns, long &update_time_ns);
+  double get_repeats_compression();
 private:
   pllmod_treeinfo_t * _pll_treeinfo;
   IDSet _parts_master;
