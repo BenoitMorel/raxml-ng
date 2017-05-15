@@ -481,5 +481,3 @@ pll_partition_t* create_pll_partition(const Options& opts, const PartitionInfo& 
 
   return partition;
 }
-
-
