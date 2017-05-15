@@ -47,7 +47,10 @@ struct RaxmlInstance
   TreeList start_trees;
   BootstrapReplicateList bs_reps;
   PartitionAssignmentList proc_part_assign;
+  unique_ptr<LoadBalancer> load_balancer;
   unique_ptr<BootstrapTree> bs_tree;
+
+  unique_ptr<NewickStream> start_tree_stream;
 
   /* this is just a dummy random tree used for convenience, e,g, if we need tip labels or
    * just 'any' valid tree for the alignment at hand */
@@ -176,10 +179,12 @@ void check_msa(RaxmlInstance& instance)
     }
     else
     {
-      for (auto e: gap_seqs)
+      for(auto it = gap_seqs.begin(); it != gap_seqs.end();)
       {
-        if (cur_gap_seq.find(e) == cur_gap_seq.end())
-          gap_seqs.erase(e);
+        if(cur_gap_seq.find(*it) == cur_gap_seq.end())
+          it = gap_seqs.erase(it);
+        else
+          ++it;
       }
     }
 
@@ -197,9 +202,9 @@ void check_msa(RaxmlInstance& instance)
 
   if (!gap_seqs.empty())
   {
-   LOG_WARN << "\nWARNING: Fully undetermined sequences found: " << stats->gap_seqs_count << endl;
+   LOG_WARN << "\nWARNING: Fully undetermined sequences found: " << gap_seqs.size() << endl;
    for (auto c : gap_seqs)
-     LOG_VERB << "WARNING: Sequence " << pll_msa->label[c] << " contains only gaps!" << endl;
+     LOG_VERB << "WARNING: Sequence " << c << " " << pll_msa->label[c] << " contains only gaps!" << endl;
   }
 
 
@@ -211,7 +216,7 @@ void check_msa(RaxmlInstance& instance)
 
     ps << instance.parted_msa;
 
-    LOG_INFO << "\nNOTE: Reduced alignment (with gap-only sequences and columns removed) was printed to:\n";
+    LOG_INFO << "\nNOTE: Reduced alignment (with gap-only columns removed) was printed to:\n";
     LOG_INFO << sysutil_realpath(reduced_msa_fname) << endl;
 
     // save reduced partition file
@@ -289,11 +294,11 @@ Tree generate_tree(const RaxmlInstance& instance, StartingTree type)
   {
     case StartingTree::user:
     {
-      assert(!opts.tree_file.empty());
+      assert(instance.start_tree_stream);
 
       /* parse the unrooted binary tree in newick format, and store the number
          of tip nodes in tip_nodes_count */
-      tree = Tree::loadFromFile(opts.tree_file);
+      *instance.start_tree_stream >> tree;
 
       LOG_DEBUG << "Loaded user starting tree with " << tree.num_tips() << " taxa from: "
                            << opts.tree_file << endl;
@@ -307,7 +312,6 @@ Tree generate_tree(const RaxmlInstance& instance, StartingTree type)
     }
     case StartingTree::random:
       /* no starting tree provided, generate a random one */
-      assert(opts.command != Command::evaluate);
 
       LOG_DEBUG << "Generating a random starting tree with " << msa.size() << " taxa" << endl;
 
@@ -373,6 +377,9 @@ void build_start_trees(RaxmlInstance& instance, CheckpointManager& cm)
   {
     case StartingTree::user:
       LOG_INFO_TS << "Loading user starting tree(s) from: " << opts.tree_file << endl;
+      if (!sysutil_file_exists(opts.tree_file))
+        throw runtime_error("File not found: " + opts.tree_file);
+      instance.start_tree_stream.reset(new NewickStream(opts.tree_file, std::ios::in));
       break;
     case StartingTree::random:
       LOG_INFO_TS << "Generating random starting tree(s) with " << msa.size() << " taxa" << endl;
@@ -387,6 +394,13 @@ void build_start_trees(RaxmlInstance& instance, CheckpointManager& cm)
   for (size_t i = 0; i < opts.num_searches; ++i)
   {
     auto tree = generate_tree(instance, opts.start_tree);
+
+    // TODO use universal starting tree generator
+    if (opts.start_tree == StartingTree::user)
+    {
+      if (instance.start_tree_stream->peek() != EOF)
+        instance.opts.num_searches++;
+    }
 
     // TODO: skip generation
     if (i < cm.checkpoint().ml_trees.size())
@@ -421,13 +435,66 @@ void balance_load(RaxmlInstance& instance)
     ++i;
   }
 
-//  SimpleLoadBalancer balancer;
-  KassianLoadBalancer balancer;
-
-  instance.proc_part_assign = balancer.get_all_assignments(part_sizes, ParallelContext::num_procs());
+  instance.proc_part_assign =
+      instance.load_balancer->get_all_assignments(part_sizes, ParallelContext::num_procs());
 
   LOG_INFO_TS << "Data distribution: " << PartitionAssignmentStats(instance.proc_part_assign) << endl;
   LOG_VERB << endl << instance.proc_part_assign;
+}
+
+void balance_load(RaxmlInstance& instance, WeightVectorList part_site_weights)
+{
+  /* This function is used to re-distribute sites across processes for each bootstrap replicate.
+   * Since during bootstrapping alignment sites are sampled with replacement, some sites will be
+   * absent from BS alignment. Therefore, site distribution computed for original alignment can
+   * be suboptimal for BS replicates. Here, we recompute the site distribution, ignoring all sites
+   * that are not present in BS replicate (i.e., have weight of 0 in part_site_weights).
+   * */
+
+  PartitionAssignment part_sizes;
+  WeightVectorList comp_pos_map(part_site_weights.size());
+
+  /* init list of partition sizes */
+  size_t i = 0;
+  for (auto const& weights: part_site_weights)
+  {
+    /* build mapping from compressed indices to the original/uncompressed ones */
+    comp_pos_map[i].reserve(weights.size());
+    for (size_t s = 0; s < weights.size(); ++s)
+    {
+      if (weights[s] > 0)
+      {
+        comp_pos_map[i].push_back(s);
+      }
+    }
+
+    LOG_DEBUG << "Partition #" << i << ": " << comp_pos_map[i].size() << endl;
+
+    /* add compressed partition length to the */
+    part_sizes.assign_sites(i, 0, comp_pos_map[i].size());
+    ++i;
+  }
+
+  instance.proc_part_assign =
+      instance.load_balancer->get_all_assignments(part_sizes, ParallelContext::num_procs());
+
+  LOG_VERB_TS << "Data distribution: " << PartitionAssignmentStats(instance.proc_part_assign) << endl;
+  LOG_DEBUG << endl << instance.proc_part_assign;
+
+  // translate partition range coordinates: compressed -> uncompressed
+  for (auto& part_assign: instance.proc_part_assign)
+  {
+    for (auto& part_range: part_assign)
+    {
+      const auto& pos_map = comp_pos_map[part_range.part_id];
+      const auto comp_start = part_range.start;
+      part_range.start = comp_start > 0 ? pos_map[comp_start] : 0;
+      part_range.length = pos_map[comp_start + part_range.length - 1] - part_range.start + 1;
+    }
+  }
+
+//  LOG_VERB_TS << "(uncompressed) Data distribution: " << PartitionAssignmentStats(instance.proc_part_assign) << endl;
+//  LOG_DEBUG << endl << instance.proc_part_assign;
 }
 
 void generate_bootstraps(RaxmlInstance& instance, const Checkpoint& checkp)
@@ -463,18 +530,37 @@ void draw_bootstrap_support(RaxmlInstance& instance, const Checkpoint& checkp)
   instance.bs_tree->calc_support();
 }
 
+void save_ml_trees(const Options& opts, const Checkpoint& checkp)
+{
+  NewickStream nw(opts.ml_trees_file(), std::ios::out);
+  Tree ml_tree = checkp.tree;
+  for (auto topol: checkp.ml_trees)
+  {
+    ml_tree.topology(topol.second);
+    nw << ml_tree;
+  }
+}
+
 void print_final_output(const RaxmlInstance& instance, const Checkpoint& checkp)
 {
   auto const& opts = instance.opts;
 
-  LOG_INFO << "\nOptimized model parameters:" << endl;
+  auto model_log_lvl = instance.parted_msa.part_count() > 1 ? LogLevel::verbose : LogLevel::info;
 
-  assert(checkp.models.size() == instance.parted_msa.part_count());
+  RAXML_LOG(model_log_lvl) << "\nOptimized model parameters:" << endl;
 
   for (size_t p = 0; p < instance.parted_msa.part_count(); ++p)
   {
-    LOG_INFO << "\n   Partition " << p << ": " << instance.parted_msa.part_info(p).name().c_str() << endl;
-    LOG_INFO << checkp.models.at(p);
+    RAXML_LOG(model_log_lvl) << "\n   Partition " << p << ": " <<
+        instance.parted_msa.part_info(p).name().c_str() << endl;
+    RAXML_LOG(model_log_lvl) << checkp.models.at(p);
+  }
+
+  if (opts.command == Command::evaluate)
+  {
+    save_ml_trees(opts, checkp);
+
+    LOG_INFO << "\nAll optimized tree(s) saved to: " << sysutil_realpath(opts.ml_trees_file()) << endl;
   }
 
   if (opts.command == Command::search || opts.command == Command::all)
@@ -492,18 +578,18 @@ void print_final_output(const RaxmlInstance& instance, const Checkpoint& checkp)
 
     if (checkp.ml_trees.size() > 1)
     {
-      NewickStream nw(opts.ml_trees_file(), std::ios::out);
-      Tree ml_tree = checkp.tree;
-      for (auto topol: checkp.ml_trees)
-      {
-        ml_tree.topology(topol.second);
-        nw << ml_tree;
-      }
+      save_ml_trees(opts, checkp);
 
       LOG_INFO << "All ML trees saved to: " << sysutil_realpath(opts.ml_trees_file()) << endl;
     }
 
     LOG_INFO << "Best ML tree saved to: " << sysutil_realpath(opts.best_tree_file()) << endl;
+
+    RaxmlPartitionStream model_stream(opts.best_model_file(), true);
+    model_stream.print_model_params(true);
+    model_stream << instance.parted_msa;
+
+    LOG_INFO << "Optimized model saved to: " << sysutil_realpath(opts.best_model_file()) << endl;
 
     if (opts.command == Command::all)
     {
@@ -545,7 +631,7 @@ void print_final_output(const RaxmlInstance& instance, const Checkpoint& checkp)
   LOG_INFO << endl;
 }
 
-void thread_main(const RaxmlInstance& instance, CheckpointManager& cm)
+void thread_main(RaxmlInstance& instance, CheckpointManager& cm)
 {
   unique_ptr<TreeInfo> treeinfo;
 
@@ -560,12 +646,20 @@ void thread_main(const RaxmlInstance& instance, CheckpointManager& cm)
   /* get partitions assigned to the current thread */
   auto const& part_assign = instance.proc_part_assign.at(ParallelContext::proc_id());
 
-  if ((opts.command == Command::search || opts.command == Command::all) &&
-      !instance.start_trees.empty())
+  if ((opts.command == Command::search || opts.command == Command::all ||
+      opts.command == Command::evaluate ) && !instance.start_trees.empty())
   {
 
-    LOG_INFO << "\nStarting ML tree search with " << opts.num_searches <<
-        " distinct starting trees" << endl << endl;
+    if (opts.command == Command::evaluate)
+    {
+      LOG_INFO << "\nEvaluating " << opts.num_searches <<
+          " trees" << endl << endl;
+    }
+    else
+    {
+      LOG_INFO << "\nStarting ML tree search with " << opts.num_searches <<
+          " distinct starting trees" << endl << endl;
+    }
 
     size_t start_tree_num = cm.checkpoint().ml_trees.size();
     bool use_ckp_tree = cm.checkpoint().search_state.step != CheckpointStep::start;
@@ -583,25 +677,30 @@ void thread_main(const RaxmlInstance& instance, CheckpointManager& cm)
       else
         treeinfo.reset(new TreeInfo(opts, tree, master_msa, part_assign));
 
-  //    if (!treeinfo)
-  //      treeinfo.reset(new TreeInfo(opts, tree, master_msa, part_assign));
-  //    else
-  //      treeinfo->tree(tree);
-
       Optimizer optimizer(opts);
-      if (opts.command == Command::search || opts.command == Command::all)
+      if (opts.command == Command::evaluate)
       {
-        optimizer.optimize_topology(*treeinfo, cm);
+        LOG_INFO_TS << "Tree #" << start_tree_num <<
+            ", initial LogLikelihood: " << FMT_LH(treeinfo->loglh()) << endl;
+        LOG_PROGR << endl;
+        optimizer.evaluate(*treeinfo, cm);
       }
       else
       {
-        LOG_INFO << "\nInitial LogLikelihood: " << FMT_LH(treeinfo->loglh()) << endl << endl;
-        optimizer.optimize(*treeinfo);
+        optimizer.optimize_topology(*treeinfo, cm);
       }
 
       LOG_PROGR << endl;
-      LOG_INFO_TS << "ML tree search #" << start_tree_num <<
-          ", logLikelihood: " << FMT_LH(cm.checkpoint().loglh()) << endl;
+      if (opts.command == Command::evaluate)
+      {
+        LOG_INFO_TS << "Tree #" << start_tree_num <<
+            ", final logLikelihood: " << FMT_LH(cm.checkpoint().loglh()) << endl;
+      }
+      else
+      {
+        LOG_INFO_TS << "ML tree search #" << start_tree_num <<
+            ", logLikelihood: " << FMT_LH(cm.checkpoint().loglh()) << endl;
+      }
       LOG_PROGR << endl;
 
       cm.save_ml_tree();
@@ -630,10 +729,19 @@ void thread_main(const RaxmlInstance& instance, CheckpointManager& cm)
   {
     ++bs_num;
 
+    // rebalance sites
+    if (ParallelContext::master_thread())
+    {
+      balance_load(instance, bs.site_weights);
+    }
+    ParallelContext::thread_barrier();
+
+    auto const& bs_part_assign = instance.proc_part_assign.at(ParallelContext::proc_id());
+
 //    Tree tree = Tree::buildRandom(master_msa.full_msa());
     /* for now, use the same random tree for all bootstraps */
     const Tree& tree = instance.random_tree;
-    treeinfo.reset(new TreeInfo(opts, tree, master_msa, part_assign, bs.site_weights));
+    treeinfo.reset(new TreeInfo(opts, tree, master_msa, bs_part_assign, bs.site_weights));
 
     Optimizer optimizer(opts);
     optimizer.optimize_topology(*treeinfo, cm);
@@ -681,12 +789,20 @@ void master_main(RaxmlInstance& instance, CheckpointManager& cm)
   /* generate bootstrap replicates */
   generate_bootstraps(instance, cm.checkpoint());
 
+  instance.opts.remove_result_files();
+
   thread_main(instance, cm);
 
   if (ParallelContext::master_rank())
   {
     if (opts.command == Command::all)
       draw_bootstrap_support(instance, cm.checkpoint());
+
+    assert(cm.checkpoint().models.size() == instance.parted_msa.part_count());
+    for (size_t p = 0; p < instance.parted_msa.part_count(); ++p)
+    {
+      instance.parted_msa.model(p, cm.checkpoint().models.at(p));
+    }
 
     print_final_output(instance, cm.checkpoint());
 
@@ -736,6 +852,21 @@ int main(int argc, char** argv)
       print_banner();
       clean_exit(EXIT_SUCCESS);
       break;
+    case Command::evaluate:
+    case Command::search:
+    case Command::bootstrap:
+    case Command::all:
+      if (!instance.opts.redo_mode && instance.opts.result_files_exist())
+      {
+        LOG_ERROR << endl << "ERROR: Result files for the run with prefix `" <<
+                            (instance.opts.outfile_prefix.empty() ?
+                                instance.opts.msa_file : instance.opts.outfile_prefix) <<
+                            "` already exist!\n" <<
+                            "Please either choose a new prefix, remove old files, or add "
+                            "--redo command line switch to overwrite them." << endl << endl;
+        clean_exit(EXIT_FAILURE);
+      }
+      break;
     default:
       break;
   }
@@ -743,7 +874,14 @@ int main(int argc, char** argv)
   /* now get to the real stuff */
   srand(instance.opts.random_seed);
   logger().set_log_level(instance.opts.log_level);
-  logger().set_log_filename(instance.opts.log_file());
+
+  /* only master process writes the log file */
+  if (ParallelContext::master())
+  {
+    auto mode = !instance.opts.redo_mode && sysutil_file_exists(instance.opts.checkp_file()) ?
+        ios::app : ios::out;
+    logger().set_log_filename(instance.opts.log_file(), mode);
+  }
 
   print_banner();
   LOG_INFO << instance.opts;
@@ -762,20 +900,13 @@ int main(int argc, char** argv)
           LOG_WARN << "WARNING: Running in REDO mode: existing checkpoints are ignored, "
               "and all result files will be overwritten!" << endl << endl;
         }
-        else
-        {
-          if (instance.opts.result_files_exist())
-            throw runtime_error("Result files for the run with prefix `" +
-                                (instance.opts.outfile_prefix.empty() ?
-                                    instance.opts.msa_file : instance.opts.outfile_prefix) +
-                                "` already exist!\n"
-                                "Please either choose a new prefix, remove old files, or add "
-                                "--redo command line switch to overwrite them.");
-        }
+
+        /* init load balancer */
+        instance.load_balancer.reset(new KassianLoadBalancer());
 
         CheckpointManager cm(instance.opts.checkp_file());
         ParallelContext::init_pthreads(instance.opts, std::bind(thread_main,
-                                                                std::cref(instance),
+                                                                std::ref(instance),
                                                                 std::ref(cm)));
 
         master_main(instance, cm);
