@@ -22,7 +22,8 @@ void TreeInfo::init(const Options &opts, const Tree& tree, const PartitionedMSA&
                     const PartitionAssignment& part_assign,
                     const std::vector<uintVector>& site_weights)
 {
-  _pll_treeinfo = pllmod_treeinfo_create(tree.pll_utree_copy(), tree.num_tips(),
+  _pll_treeinfo = pllmod_treeinfo_create(pll_utree_graph_clone(&tree.pll_utree_root()),
+                                         tree.num_tips(),
                                          parted_msa.part_count(), opts.brlen_linkage);
 
   if (!_pll_treeinfo)
@@ -57,6 +58,7 @@ void TreeInfo::init(const Options &opts, const Tree& tree, const PartitionedMSA&
 
       int retval = pllmod_treeinfo_init_partition(_pll_treeinfo, p, partition,
                                                   params_to_optimize,
+                                                  pinfo.model().gamma_mode(),
                                                   pinfo.model().alpha(),
                                                   pinfo.model().ratecat_submodels().data(),
                                                   pinfo.model().submodel(0).rate_sym().data());
@@ -80,14 +82,20 @@ TreeInfo::~TreeInfo ()
 {
   if (_pll_treeinfo)
   {
-    pll_utree_destroy(_pll_treeinfo->root, NULL);
+    for (unsigned int i = 0; i < _pll_treeinfo->partition_count; ++i)
+    {
+      if (_pll_treeinfo->partitions[i])
+        pll_partition_destroy(_pll_treeinfo->partitions[i]);
+    }
+
+    pll_utree_graph_destroy(_pll_treeinfo->root, NULL);
     pllmod_treeinfo_destroy(_pll_treeinfo);
   }
 }
 
 Tree TreeInfo::tree() const
 {
-  return _pll_treeinfo ? Tree(_pll_treeinfo->tip_count, _pll_treeinfo->root) : Tree();
+  return _pll_treeinfo ? Tree(_pll_treeinfo->tip_count, *_pll_treeinfo->root) : Tree();
 }
 
 double TreeInfo::loglh(bool incremental)
@@ -133,7 +141,8 @@ double TreeInfo::optimize_branches(double lh_epsilon, double brlen_smooth_factor
                                                                     _pll_treeinfo->parallel_context,
                                                                     _pll_treeinfo->parallel_reduce_cb
                                                                     );
-    DBG("\t - after brlen: logLH = %f\n", new_loglh);
+
+    LOG_DEBUG << "\t - after brlen: logLH = " << new_loglh << endl;
 
     if (pll_errno)
       throw runtime_error("ERROR in branch lenght optimization: " + string(pll_errmsg));
@@ -152,7 +161,7 @@ double TreeInfo::optimize_branches(double lh_epsilon, double brlen_smooth_factor
     /* normalize scalers and scale the branches accordingly */
     pllmod_treeinfo_normalize_brlen_scalers(_pll_treeinfo);
 
-    DBG("\t - after brlen scalers: logLH = %f\n", new_loglh);
+    LOG_DEBUG << "\t - after brlen scalers: logLH = " << new_loglh << endl;
   }
 
 
@@ -172,7 +181,8 @@ double TreeInfo::optimize_params(int params_to_optimize, double lh_epsilon)
                                                           PLLMOD_OPT_MAX_SUBST_RATE,
                                                           RAXML_BFGS_FACTOR,
                                                           RAXML_PARAM_EPSILON);
-    DBG("\t - after rates: logLH = %f\n", new_loglh);
+
+    LOG_DEBUG << "\t - after rates: logLH = " << new_loglh << endl;
   }
 
   /* optimize BASE FREQS */
@@ -185,7 +195,7 @@ double TreeInfo::optimize_params(int params_to_optimize, double lh_epsilon)
                                                           RAXML_BFGS_FACTOR,
                                                           RAXML_PARAM_EPSILON);
 
-    DBG("\t - after freqs: logLH = %f\n", new_loglh);
+    LOG_DEBUG << "\t - after freqs: logLH = " << new_loglh << endl;
   }
 
   /* optimize ALPHA */
@@ -196,7 +206,8 @@ double TreeInfo::optimize_params(int params_to_optimize, double lh_epsilon)
                                                       PLLMOD_OPT_MIN_ALPHA,
                                                       PLLMOD_OPT_MAX_ALPHA,
                                                       RAXML_PARAM_EPSILON);
-    DBG("\t - after alpha: logLH = %f\n", new_loglh);
+
+   LOG_DEBUG << "\t - after alpha: logLH = " << new_loglh << endl;
   }
 
   if (params_to_optimize & PLLMOD_OPT_PARAM_PINV)
@@ -207,7 +218,7 @@ double TreeInfo::optimize_params(int params_to_optimize, double lh_epsilon)
                                                       PLLMOD_OPT_MAX_PINV,
                                                       RAXML_PARAM_EPSILON);
 
-    DBG("\t - after p-inv: logLH = %f\n", new_loglh);
+    LOG_DEBUG << "\t - after p-inv: logLH = " << new_loglh << endl;
   }
 
   /* optimize FREE RATES and WEIGHTS */
@@ -224,8 +235,8 @@ double TreeInfo::optimize_params(int params_to_optimize, double lh_epsilon)
         _pll_treeinfo->partition_count > 1)
       pllmod_treeinfo_normalize_brlen_scalers(_pll_treeinfo);
 
-    DBG("\t - after freeR: logLH = %f\n", new_loglh);
-    DBG("\t - after freeR/crosscheck: logLH = %f\n", loglh());
+    LOG_DEBUG << "\t - after freeR: logLH = " << new_loglh << endl;
+//    LOG_DEBUG << "\t - after freeR/crosscheck: logLH = " << loglh() << endl;
   }
 
   if (params_to_optimize & PLLMOD_OPT_PARAM_BRANCHES_ITERATIVE)
@@ -285,7 +296,6 @@ void build_clv(ProbVector::const_iterator probs, size_t sites, WeightVector::con
                pll_partition_t* partition, bool normalize, std::vector<double>& clv)
 {
   const auto states = partition->states;
-  const auto states_padded = partition->states_padded;
   auto clvp = clv.begin();
 
   for (size_t i = 0; i < sites; ++i)
@@ -304,7 +314,7 @@ void build_clv(ProbVector::const_iterator probs, size_t sites, WeightVector::con
           clvp[j] = 1.0;
       }
 
-      clvp += states_padded;
+      clvp += states;
     }
 
     /* NB: clv has to be padded, but msa arrays are not! */
@@ -330,13 +340,13 @@ void set_partition_tips(const Options& opts, const MSA& msa, const PartitionRang
     auto weights_start = msa.weights().cbegin() + part_region.start;
 
     // we need a libpll function for that!
-    auto clv_size = partition->sites * partition->states_padded;
+    auto clv_size = partition->sites * partition->states;
     std::vector<double> tmp_clv(clv_size);
     for (size_t i = 0; i < msa.size(); ++i)
     {
       auto prob_start = msa.probs(i, part_region.start);
       build_clv(prob_start, partition->sites, weights_start, partition, normalize, tmp_clv);
-      pll_set_tip_clv(partition, i, tmp_clv.data());
+      pll_set_tip_clv(partition, i, tmp_clv.data(), PLL_FALSE);
     }
   }
   else
@@ -374,13 +384,13 @@ void set_partition_tips(const Options& opts, const MSA& msa, const PartitionRang
     auto weights_start = msa.weights().cbegin() + part_region.start;
 
     // we need a libpll function for that!
-    auto clv_size = part_region.length * partition->states_padded;
+    auto clv_size = part_region.length * partition->states;
     std::vector<double> tmp_clv(clv_size);
     for (size_t i = 0; i < msa.size(); ++i)
     {
       auto prob_start = msa.probs(i, part_region.start);
       build_clv(prob_start, part_region.length, weights_start, partition, normalize, tmp_clv);
-      pll_set_tip_clv(partition, i, tmp_clv.data());
+      pll_set_tip_clv(partition, i, tmp_clv.data(), PLL_FALSE);
     }
   }
   else
@@ -416,10 +426,9 @@ pll_partition_t* create_pll_partition(const Options& opts, const PartitionInfo& 
   {
     attrs |= PLL_ATTRIB_RATE_SCALERS;
 
-    if (model.num_states() != 4 ||
-        (opts.simd_arch != PLL_ATTRIB_ARCH_AVX && opts.simd_arch != PLL_ATTRIB_ARCH_AVX2))
+    if (model.num_states() != 4)
     {
-      throw runtime_error("Per-rate scalers are implemented for DNA with AVX/AVX2 vectorization only!\n");
+      throw runtime_error("Per-rate scalers are implemented for DNA data only!\n");
     }
   }
 

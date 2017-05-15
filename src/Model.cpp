@@ -21,6 +21,58 @@ const unordered_map<DataType, const unsigned int *,EnumClassHash>  DATATYPE_MAPS
   {DataType::diploid10, pll_map_diploid10}
 };
 
+
+// TODO move it out of here
+class parse_error {};
+static bool read_param(istringstream& s, double& val)
+{
+  if (s.peek() == '{' || s.peek() == '[')
+  {
+    s.get();
+    s >> val;
+    auto c = s.get();
+    if (c != '}' && c != ']')
+      throw parse_error();
+
+    return true;
+  }
+  else
+    return false;
+}
+
+static bool read_param(istringstream& s, doubleVector& vec)
+{
+  if (s.peek() == '{' || s.peek() == '[')
+  {
+    int c = s.get();
+    while (s && c != '}' && c != ']')
+    {
+      double val;
+      s >> val;
+      vec.push_back(val);
+      c = s.get();
+    }
+    if (c != '}' && c != ']')
+      throw parse_error();
+
+    return true;
+  }
+  else
+    return false;
+}
+
+static void print_param(ostringstream& s, const doubleVector& vec)
+{
+  s << "{";
+  size_t i = 0;
+  for (auto v: vec)
+  {
+    s << ((i > 0) ? "/" : "") << v;
+    ++i;
+  }
+  s << "}";
+}
+
 Model::Model (DataType data_type, const std::string &model_string) :
     _data_type(data_type)
 {
@@ -37,7 +89,7 @@ const unsigned int * Model::charmap() const
 
 void Model::init_from_string(const std::string &model_string)
 {
-  size_t pos = model_string.find_first_of("+");
+  size_t pos = model_string.find_first_of("+{[");
   const string model_name = pos == string::npos ? model_string : model_string.substr(0, pos);
   const string model_opts = pos == string::npos ? "" : model_string.substr(pos);
 
@@ -118,10 +170,14 @@ pllmod_mixture_model_t * Model::init_mix_model(const std::string &model_name)
 
 void Model::init_model_opts(const std::string &model_opts, const pllmod_mixture_model_t& mix_model)
 {
+  _gamma_mode = PLL_GAMMA_RATES_MEAN;
   _alpha = 1.0;
   _pinv = 0.0;
   _brlen_scaler = 1.0;
   _name = string(mix_model.name);
+
+  _ratecat_rates.clear();
+  _ratecat_weights.clear();
 
   /* set rate heterogeneity defaults from model */
   _num_ratecats = mix_model.ncomp;
@@ -143,83 +199,251 @@ void Model::init_model_opts(const std::string &model_opts, const pllmod_mixture_
       mix_model.models[0]->rates ? ParamValue::model : ParamValue::ML;
 
   const char *s = model_opts.c_str();
-  const char *tmp;
+
+  istringstream ss(model_opts);
+
+  try
+  {
+    doubleVector user_srates;
+    if (read_param(ss, user_srates))
+    {
+      // TODO support multi-matrix models
+      if (_submodels.size() > 0)
+        runtime_error("User-defined rates for multi-matrix models are not supported yet!");
+
+      auto smodel = _submodels[0];
+      auto num_uniq_rates = smodel.num_uniq_rates();
+      if (user_srates.size() != num_uniq_rates)
+      {
+        throw runtime_error("Invalid number of substitution rates specified: " +
+                            std::to_string(user_srates.size()) + " (expected: " +
+                            std::to_string(num_uniq_rates) + ")\n");
+      }
+
+      // normalize the rates
+      auto last_rate = smodel.rate_sym().empty() ?
+                                  user_srates.back() : user_srates[smodel.rate_sym().back()];
+      for (auto& r: user_srates)
+        r /= last_rate;
+
+      for (auto& m: _submodels)
+        m.uniq_subst_rates(user_srates);
+
+      _param_mode[PLLMOD_OPT_PARAM_SUBST_RATES] = ParamValue::user;
+    }
+  }
+  catch(parse_error& e)
+  {
+    throw runtime_error(string("Invalid substitution rate specification: ") + s);
+  }
+
+  // skip "+"
+  ss.get();
 
   /* parse the rest and set additional model params */
-  int rate_cats;
   ParamValue param_mode;
-  while(*s != '\0')
+  while(ss.peek() != EOF)
   {
-    // skip "+"
-    s++;
+    // set current string position, for error reporting
+    s = model_opts.c_str() + ss.tellg();
 
-    switch(toupper(*s))
+    switch(toupper(ss.get()))
     {
+      case EOF:
       case '\0':
+        // end of model options
+        break;
       case '+':
-        break;
+        // proceed to the next token
+        continue;
       case 'F':
-        switch (toupper(*(s+1)))
+        try
         {
-          case '\0':
-          case '+':
-          case 'C':
-            param_mode = ParamValue::empirical;
-            break;
-          case 'O':
-            param_mode = ParamValue::ML;
-            break;
-          case 'E':
-            param_mode = ParamValue::equal;
-            break;
-          default:
-            throw runtime_error(string("Invalid frequencies specification: ") + s);
-        }
-        _param_mode[PLLMOD_OPT_PARAM_FREQUENCIES] = param_mode;
-        break;
-      case 'I':
-        switch (toupper(*(s+1)))
-        {
-          case '\0':
-          case '+':
-          case 'O':
-            param_mode = ParamValue::ML;
-            break;
-          case 'C':
-            param_mode = ParamValue::empirical;
-            break;
-          case '{':
-            if (sscanf(s+1, "{%lf}", &_pinv) == 1 && ((tmp = strchr(s, '}')) != NULL))
+          switch (toupper(ss.get()))
+          {
+            case EOF:
+            case '\0':
+            case '+':
+            case 'C':
+              param_mode = ParamValue::empirical;
+              break;
+            case 'O':
+              param_mode = ParamValue::ML;
+              break;
+            case 'E':
+              param_mode = ParamValue::equal;
+              break;
+            case 'U':
             {
               param_mode = ParamValue::user;
-              s = tmp+1;
+
+              /* for now, read single set of frequencies */
+              doubleVector user_freqs;
+              if (read_param(ss, user_freqs))
+              {
+                if (user_freqs.size() != _num_states)
+                {
+                  throw runtime_error("Invalid number of user frequencies specified: " +
+                           std::to_string(user_freqs.size()) + "\n" +
+                           "Number of frequencies must be equal to the number of states: " +
+                           std::to_string(_num_states) + "\n");
+                }
+
+                double sum = 0.;
+                bool invalid = false;
+                for (auto v: user_freqs)
+                {
+                  invalid |= (v <= 0. || v >= 1.);
+                  sum += v;
+                }
+
+                if (invalid)
+                {
+                  throw runtime_error("Invalid base frequencies specified! "
+                      "Frequencies must be positive numbers between 0. and 1.");
+                }
+
+                // normalize freqs
+                for (auto& f: user_freqs)
+                  f /= sum;
+
+                for (auto& m: _submodels)
+                  m.base_freqs(user_freqs);
+              }
+              else
+                throw parse_error();
             }
-            else
-              throw runtime_error(string("Invalid p-inv specification: ") + s);
             break;
-          default:
-            throw runtime_error(string("Invalid p-inv specification: ") + s);
+            default:
+              throw parse_error();
+          }
+          _param_mode[PLLMOD_OPT_PARAM_FREQUENCIES] = param_mode;
         }
-        _param_mode[PLLMOD_OPT_PARAM_PINV] = param_mode;
+        catch(parse_error& e)
+        {
+          throw runtime_error(string("Invalid frequencies specification: ") + s);
+        }
+        break;
+      case 'I':
+        try
+        {
+          switch (toupper(ss.get()))
+          {
+            case EOF:
+            case '\0':
+            case '+':
+            case 'O':
+              param_mode = ParamValue::ML;
+              break;
+            case 'C':
+              param_mode = ParamValue::empirical;
+              break;
+            case 'U':
+              if (read_param(ss, _pinv))
+                param_mode = ParamValue::user;
+              else
+                throw parse_error();
+              break;
+            default:
+              throw parse_error();
+          }
+          _param_mode[PLLMOD_OPT_PARAM_PINV] = param_mode;
+        }
+        catch(parse_error& e)
+        {
+          throw runtime_error(string("Invalid p-inv specification: ") + s);
+        }
+        break;
+      case 'G':
+        try
+        {
+          /* allow to override mixture ratehet mode for now */
+          _rate_het = PLLMOD_UTIL_MIXTYPE_GAMMA;
+          if (isdigit(ss.peek()))
+          {
+            ss >> _num_ratecats;
+          }
+          else if (_num_ratecats == 1)
+            _num_ratecats = 4;
+
+          if (read_param(ss, _alpha))
+          {
+            _param_mode[PLLMOD_OPT_PARAM_ALPHA] = ParamValue::user;
+          }
+        }
+        catch(parse_error& e)
+        {
+          throw runtime_error(string("Invalid GAMMA specification: ") + s);
+        }
         break;
       case 'R':
-      case 'G':
-        /* allow to override mixture ratehet mode for now */
-        _rate_het = toupper(*s) == 'R' ? PLLMOD_UTIL_MIXTYPE_FREE : PLLMOD_UTIL_MIXTYPE_GAMMA;
-        if (sscanf(s+1, "%d", &rate_cats) == 1)
+        _rate_het = PLLMOD_UTIL_MIXTYPE_FREE;
+        if (isdigit(ss.peek()))
         {
-          _num_ratecats = rate_cats;
+          ss >> _num_ratecats;
         }
         else if (_num_ratecats == 1)
           _num_ratecats = 4;
+
+        try
+        {
+          doubleVector v;
+          if (read_param(ss, v))
+          {
+            if (v.size() != _num_ratecats)
+            {
+              throw runtime_error("Invalid number of free rates specified: " +
+                                  std::to_string(v.size()) + " (expected: " +
+                                  std::to_string(_num_ratecats) + ")\n");
+            }
+
+            // TODO: maybe allow to optimize rates and weights separately
+            _param_mode[PLLMOD_OPT_PARAM_RATE_WEIGHTS] = ParamValue::user;
+            _param_mode[PLLMOD_OPT_PARAM_FREE_RATES] = ParamValue::user;
+
+            _ratecat_rates = v;
+
+            v.clear();
+            if (read_param(ss, v))
+            {
+              if (v.size() != _num_ratecats)
+              {
+                throw runtime_error("Invalid number of rate weights specified: " +
+                                    std::to_string(v.size()) + " (expected: " +
+                                    std::to_string(_num_ratecats) + ")\n");
+              }
+
+
+              // normalize weights
+              double sum = 0;
+              for (auto w: v)
+                sum += w;
+
+              for (auto& w: v)
+                w /= sum;
+
+              _ratecat_weights = v;
+            }
+            else
+              _ratecat_weights.assign(_num_ratecats, 1.0 / _num_ratecats);
+
+            // normalize weights + rates
+            double sum_weightrates = 0.0;
+            for (size_t i = 0; i < _num_ratecats; ++i)
+              sum_weightrates += _ratecat_rates[i] * _ratecat_weights[i];
+
+            for (auto& r: _ratecat_rates)
+              r /= sum_weightrates;
+          }
+        }
+        catch(parse_error& e)
+        {
+          throw runtime_error(string("Invalid FreeRate specification: ") + s);
+        }
         break;
       default:
         throw runtime_error("Wrong model specification: " + model_opts);
     }
-
-    // rewind to next term
-    while (*s != '+' && *s != '\0')
-      s++;
   }
 
   switch (_param_mode.at(PLLMOD_OPT_PARAM_FREQUENCIES))
@@ -239,10 +463,10 @@ void Model::init_model_opts(const std::string &model_opts, const pllmod_mixture_
       assert(0);
   }
 
-  const size_t num_srates = pllmod_util_subst_rate_count(_num_states);
   switch (_param_mode.at(PLLMOD_OPT_PARAM_SUBST_RATES))
   {
     case ParamValue::user:
+      break;
     case ParamValue::empirical:
     case ParamValue::model:
       /* nothing to do here */
@@ -251,15 +475,17 @@ void Model::init_model_opts(const std::string &model_opts, const pllmod_mixture_
     case ParamValue::ML:
       /* use equal rates as s a starting value for ML optimization */
       for (auto& m: _submodels)
-        m.subst_rates(doubleVector(num_srates, 1.0));
+        m.subst_rates(doubleVector(m.num_rates(), 1.0));
       break;
     default:
       assert(0);
   }
 
   /* default: equal rates & weights */
-  _ratecat_rates.assign(_num_ratecats, 1.0);
-  _ratecat_weights.assign(_num_ratecats, 1.0 / _num_ratecats);
+  if (_ratecat_rates.empty())
+    _ratecat_rates.assign(_num_ratecats, 1.0);
+  if (_ratecat_weights.empty())
+    _ratecat_weights.assign(_num_ratecats, 1.0 / _num_ratecats);
   _ratecat_submodels.assign(_num_ratecats, 0);
 
   if (_num_ratecats > 1)
@@ -277,16 +503,20 @@ void Model::init_model_opts(const std::string &model_opts, const pllmod_mixture_
       case PLLMOD_UTIL_MIXTYPE_GAMMA:
         /* compute the discretized category rates from a gamma distribution
            with given alpha shape and store them in rate_cats  */
-        pll_compute_gamma_cats(_alpha, _num_ratecats, _ratecat_rates.data());
+        pll_compute_gamma_cats(_alpha, _num_ratecats, _ratecat_rates.data(), _gamma_mode);
         if (_param_mode[PLLMOD_OPT_PARAM_ALPHA] == ParamValue::undefined)
           _param_mode[PLLMOD_OPT_PARAM_ALPHA] = ParamValue::ML;
         break;
 
       case PLLMOD_UTIL_MIXTYPE_FREE:
-        /* use GAMMA rates as inital values -> can be changed */
-        pll_compute_gamma_cats(_alpha, _num_ratecats, _ratecat_rates.data());
-        _param_mode[PLLMOD_OPT_PARAM_FREE_RATES] = ParamValue::ML;
-        _param_mode[PLLMOD_OPT_PARAM_RATE_WEIGHTS] = ParamValue::ML;
+        if (_param_mode[PLLMOD_OPT_PARAM_FREE_RATES] == ParamValue::undefined)
+        {
+          /* use GAMMA rates as initial values -> can be changed */
+          pll_compute_gamma_cats(_alpha, _num_ratecats, _ratecat_rates.data(), _gamma_mode);
+          _param_mode[PLLMOD_OPT_PARAM_FREE_RATES] = ParamValue::ML;
+        }
+        if (_param_mode[PLLMOD_OPT_PARAM_RATE_WEIGHTS] == ParamValue::undefined)
+          _param_mode[PLLMOD_OPT_PARAM_RATE_WEIGHTS] = ParamValue::ML;
         break;
 
       default:
@@ -302,15 +532,25 @@ void Model::init_model_opts(const std::string &model_opts, const pllmod_mixture_
   }
 }
 
-std::string Model::to_string() const
+std::string Model::to_string(bool print_params) const
 {
-  stringstream model_string;
+  ostringstream model_string;
   model_string << name();
 
-  switch(_param_mode.at(PLLMOD_OPT_PARAM_FREQUENCIES))
+  auto out_param_mode = _param_mode;
+  if (print_params)
+  {
+    for (auto& entry: out_param_mode)
+      entry.second = (entry.second == ParamValue::ML) ? ParamValue::user : entry.second;
+  }
+
+  if (out_param_mode.at(PLLMOD_OPT_PARAM_SUBST_RATES) == ParamValue::user)
+    print_param(model_string, submodel(0).uniq_subst_rates());
+
+  switch(out_param_mode.at(PLLMOD_OPT_PARAM_FREQUENCIES))
   {
     case ParamValue::empirical:
-      model_string << "+F";
+      model_string << "+FC";
       break;
     case ParamValue::ML:
       model_string << "+FO";
@@ -318,11 +558,17 @@ std::string Model::to_string() const
     case ParamValue::equal:
       model_string << "+FE";
       break;
+    case ParamValue::user:
+    {
+      model_string << "+FU";
+      print_param(model_string, base_freqs(0));
+    }
+    break;
     default:
       break;
   }
 
-  switch(_param_mode.at(PLLMOD_OPT_PARAM_PINV))
+  switch(out_param_mode.at(PLLMOD_OPT_PARAM_PINV))
   {
     case ParamValue::empirical:
       model_string << "+IC";
@@ -331,7 +577,7 @@ std::string Model::to_string() const
       model_string << "+I";
       break;
     case ParamValue::user:
-      model_string << "+I{" << _pinv << "}";
+      model_string << "+IU{" << _pinv << "}";
       break;
     default:
       break;
@@ -342,12 +588,17 @@ std::string Model::to_string() const
     if (_rate_het == PLLMOD_UTIL_MIXTYPE_GAMMA)
     {
       model_string << "+G" << _num_ratecats;
-      if (_param_mode.at(PLLMOD_OPT_PARAM_ALPHA) == ParamValue::user)
+      if (out_param_mode.at(PLLMOD_OPT_PARAM_ALPHA) == ParamValue::user)
         model_string << "{" << _alpha << "}";
     }
     else if (_rate_het == PLLMOD_UTIL_MIXTYPE_FREE)
     {
       model_string << "+R" << _num_ratecats;
+      if (out_param_mode.at(PLLMOD_OPT_PARAM_FREE_RATES) == ParamValue::user)
+      {
+        print_param(model_string, _ratecat_rates);
+        print_param(model_string, _ratecat_weights);
+      }
     }
   }
 

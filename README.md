@@ -1,34 +1,56 @@
 # RAxML New Generation
 
-[![License](https://img.shields.io/badge/license-AGPL-blue.svg)](http://www.gnu.org/licenses/agpl-3.0.en.html)
+[![DOI](https://zenodo.org/badge/75947982.svg)](https://zenodo.org/badge/latestdoi/75947982) [![License](https://img.shields.io/badge/license-AGPL-blue.svg)](http://www.gnu.org/licenses/agpl-3.0.en.html)
 
 ## Introduction
 
 RAxML-NG is a phylogenetic tree inference tool which uses maximum-likelihood (ML) optimality criterion. Its search heuristic is based on iteratively performing a series of Subtree Pruning and Regrafting (SPR) moves, which allows to quickly navigate to the best-known ML tree. RAxML-NG is a successor of RAxML (Stamatakis 2014) and leverages the highly optimized likelihood computation implemented in [*libpll*](https://github.com/xflouris/libpll) (Flouri et al. 2014).
 
-RAxML-NG offers improvements in speed, flexibility and user-friendliness over the previous RAxML versions. It also implements some of the features previously available in ExaML (Kozlov et al. 2015), including checkpointing and efficient load balancing for partitioned alignments.
+RAxML-NG offers improvements in speed, flexibility and user-friendliness over the previous RAxML versions. It also implements some of the features previously available in ExaML (Kozlov et al. 2015), including checkpointing and efficient load balancing for partitioned alignments (Kobert et al. 2014).
 
-RAxML-NG is currently under active development, and the mid-term plan is to have most functionality of RAxML 8.x covered.
+RAxML-NG is currently under active development, and the mid-term goal is to have most functionality of RAxML 8.x covered.
 You can see some of the planned features [here](https://github.com/amkozlov/raxml-ng/issues).
 
 ## Installation instructions
 
-* For most desktop Unix/Linux systems, the easiest way to install RAxML-NG is by using the pre-compiled binary:
-  [**Download 64-bit Linux binary**](https://github.com/amkozlov/raxml-ng/releases/download/0.1.0/raxml-ng_v0.1.0b_linux_x86_64.zip)
+* For most desktop Unix/Linux and macOS systems, the easiest way to install RAxML-NG is by using the pre-compiled binary:  
+[**Download 64-bit Linux binary**](https://github.com/amkozlov/raxml-ng/releases/download/0.3.0/raxml-ng_v0.3.0b_linux_x86_64.zip)  
+[**Download 64-bit OSX/macOS binary**](https://github.com/amkozlov/raxml-ng/releases/download/0.3.0/raxml-ng_v0.3.0b_macos_x86_64.zip)
 
-* For clusters/supercomputers (i.e., if you want to use MPI), please use the following installation package which contains pre-built *libpll*. You will need GCC 4.8+ and CMake 2.8+ to compile RAxML-NG for your system.
-  [**Download RAxML-NG MPI for Linux**](https://github.com/amkozlov/raxml-ng/releases/download/0.1.0/raxml-ng_v0.1.0b_linux_x86_64_MPI.zip)
+* For clusters/supercomputers (i.e., if you want to use MPI), please use the following installation package which contains pre-built *libpll*. You will need `GCC 4.8+` and `CMake 2.8+` in order to compile RAxML-NG for your system.  
+[**Download RAxML-NG-MPI for Linux**](https://github.com/amkozlov/raxml-ng/releases/download/0.3.0/raxml-ng_v0.3.0b_linux_x86_64_MPI.zip)
 
-* Binaries for macOS and Windows will become available later on
+* Binaries for Windows will become available later on
 
-* If neither of the above options worked for you, please clone this repository and build RAxML-NG from scratch:
+* If neither of the above options worked for you, please clone this repository and build RAxML-NG from scratch.
+
+PTHREADS version:
 
 ```
 git clone --recursive https://github.com/amkozlov/raxml-ng
+cd raxml-ng
 mkdir build && cd build
 cmake ..
 make
 ```
+
+MPI version:
+
+```
+git clone --recursive https://github.com/amkozlov/raxml-ng
+cd raxml-ng
+mkdir build && cd build
+cmake -DUSE_MPI=ON ..
+make
+```
+
+## Documentation and Support
+
+Documentation can be found in the [github wiki](https://github.com/amkozlov/raxml-ng/wiki) (work in progress).
+
+Also please check the online help with `raxml-ng -h`.
+
+If still in doubt, please feel free to post to the [RAxML google group](https://groups.google.com/forum/#!forum/raxml).
 
 ## Usage examples
 
@@ -51,9 +73,11 @@ make
 
      `./raxml-ng --evaluate --msa testAA.fa --model partitions.txt --tree test.tree --brlen scaled`
 
-## License and third party licenses
+## License and citation
 
 The code is currently licensed under the GNU Affero General Public License version 3.
+
+Pending the publication, you can cite this code as [DOI:10.5281/zenodo.492245](https://doi.org/10.5281/zenodo.492245)
 
 ## The team
 
@@ -79,3 +103,8 @@ doi:[10.1093/sysbio/syu084](http://dx.doi.org/10.1093/sysbio/syu084)
 **ExaML version 3: a tool for phylogenomic analyses on supercomputers.**
 *Bioinformatics (2015) 31 (15): 2577-2579.*
 doi:[10.1093/bioinformatics/btv184](https://doi.org/10.1093/bioinformatics/btv184)
+
+* Kobert K., Flouri T., Aberer A., Stamatakis A. (2014)
+**The divisible load balance problem and its application to phylogenetic inference.**
+*Brown D., Morgenstern B., editors. (eds.) Algorithms in Bioinformatics, Vol. 8701 of Lecture Notes in Computer Science. Springer, Berlin, pp. 204–216*
+
