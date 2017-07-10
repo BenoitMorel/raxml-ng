@@ -247,6 +247,11 @@ double TreeInfo::optimize_params(int params_to_optimize, double lh_epsilon)
   return new_loglh;
 }
 
+double TreeInfo::tbnni_round(tbnni_round_params& params)
+{
+  return pllmod_algo_tbnni_round(_pll_treeinfo, RAXML_BRLEN_MIN, RAXML_BRLEN_MAX, RAXML_BRLEN_SMOOTHINGS);
+}
+
 double TreeInfo::spr_round(spr_round_params& params)
 {
   return pllmod_algo_spr_round(_pll_treeinfo, params.radius_min, params.radius_max,

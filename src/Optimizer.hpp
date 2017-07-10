@@ -14,11 +14,13 @@ public:
   double optimize_model(TreeInfo& treeinfo, double lh_epsilon);
   double optimize_model(TreeInfo& treeinfo) { return optimize_model(treeinfo, _lh_epsilon); };
   double optimize_topology(TreeInfo& treeinfo, CheckpointManager& cm);
+  double optimize_topology_tbnni(TreeInfo& treeinfo, CheckpointManager& cm);
   double evaluate(TreeInfo& treeinfo, CheckpointManager& cm);
 private:
   double _lh_epsilon;
   int _spr_radius;
   double _spr_cutoff;
+  bool _use_tbnni;
 };
 
 #endif /* RAXML_OPTIMIZER_H_ */

@@ -42,6 +42,7 @@ void BootstrapTree::add_splits_to_hashtable(const pll_unode_t& root, bool ref_tr
                                                          ref_splits,
                                                          _num_tips,
                                                          n_splits,
+                                                         0,
                                                          update_only);
 
   pllmod_utree_split_destroy(ref_splits);

@@ -23,6 +23,11 @@ struct spr_round_params
   }
 };
 
+struct tbnni_round_params
+{
+  
+};
+
 class TreeInfo
 {
 public:
@@ -55,6 +60,7 @@ public:
   { return optimize_params(PLLMOD_OPT_PARAM_ALL & ~PLLMOD_OPT_PARAM_BRANCHES_ITERATIVE, lh_epsilon); } ;
   double optimize_branches(double lh_epsilon, double brlen_smooth_factor);
   double spr_round(spr_round_params& params);
+  double tbnni_round(tbnni_round_params& params);
 
 private:
   pllmod_treeinfo_t * _pll_treeinfo;

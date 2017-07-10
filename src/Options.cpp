@@ -139,6 +139,7 @@ std::ostream& operator<<(std::ostream& stream, const Options& opts)
 
   stream << ")" << endl;
 
+  stream << (opts.use_tbnni ? "TBNNI mode" : "SPR mode") << endl;
 
   stream << "  SIMD kernels: " << opts.simd_arch_name() << endl;
 

@@ -21,7 +21,7 @@ class Options
 public:
   Options() : cmdline(""), command(Command::none), use_tip_inner(true),
   use_pattern_compression(true), use_prob_msa(false), use_rate_scalers(false),
-  optimize_model(true), optimize_brlen(true), redo_mode(false), force_mode(false),
+  optimize_model(true), optimize_brlen(true), use_tbnni(false), redo_mode(false), force_mode(false),
   log_level(LogLevel::progress),
   msa_format(FileFormat::autodetect), data_type(DataType::autodetect),
   random_seed(0), start_tree(StartingTree::random), lh_epsilon(DEF_LH_EPSILON), spr_radius(-1),
@@ -44,6 +44,8 @@ public:
 
   bool optimize_model;
   bool optimize_brlen;
+  
+  bool use_tbnni;
 
   bool redo_mode;
   bool force_mode;
