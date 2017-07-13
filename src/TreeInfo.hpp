@@ -55,11 +55,12 @@ public:
   { return optimize_params(PLLMOD_OPT_PARAM_ALL & ~PLLMOD_OPT_PARAM_BRANCHES_ITERATIVE, lh_epsilon); } ;
   double optimize_branches(double lh_epsilon, double brlen_smooth_factor);
   double spr_round(spr_round_params& params);
+  
+  unsigned int *_map;
 
 private:
   pllmod_treeinfo_t * _pll_treeinfo;
   IDSet _parts_master;
-
   void init(const Options &opts, const Tree& tree, const PartitionedMSA& parted_msa,
             const PartitionAssignment& part_assign, const std::vector<uintVector>& site_weights);
 };

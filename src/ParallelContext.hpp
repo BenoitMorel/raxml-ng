@@ -10,6 +10,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <functional>
+
 #ifdef _RAXML_MPI
 #include <mpi.h>
 #endif

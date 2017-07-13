@@ -234,6 +234,45 @@ void check_msa(RaxmlInstance& instance)
 
 }
 
+void check_models(const RaxmlInstance& instance)
+{
+  for (const auto& pinfo: instance.parted_msa.part_list())
+  {
+    auto stats = pinfo.stats();
+    auto model = pinfo.model();
+
+    // check for zero state frequencies
+    if (model.param_mode(PLLMOD_OPT_PARAM_FREQUENCIES) == ParamValue::empirical)
+    {
+      for (unsigned int i = 0; i < stats->states; ++i)
+      {
+        if (!(stats->freqs[i] > 0.))
+        {
+          LOG_ERROR << "\nBase frequencies: ";
+          for (unsigned int j = 0; j < stats->states; ++j)
+            LOG_ERROR << stats->freqs[j] <<  " ";
+          LOG_ERROR << endl;
+
+          throw runtime_error("Frequency of state " + to_string(i) +
+                              " in partition " + pinfo.name() + " is 0!\n"
+                              "Please either change your partitioning scheme or "
+                              "use model state frequencies for this partition!");
+        }
+      }
+    }
+
+    // check partitions which contain invariant sites and have ascertainment bias enabled
+    if (model.ascbias_type() != AscBiasCorrection::none && stats->inv_cols_count > 0)
+    {
+      throw runtime_error("You enabled ascertainment bias correction for partition " +
+                           pinfo.name() + ", but it contains " +
+                           to_string(stats->inv_cols_count) + " invariant sites.\n"
+                          "This is not allowed! Please either remove invariant sites or "
+                          "disable ascertainment bias correction.");
+    }
+  }
+}
+
 void load_msa(RaxmlInstance& instance)
 {
   const auto& opts = instance.opts;
@@ -265,12 +304,16 @@ void load_msa(RaxmlInstance& instance)
   parted_msa.split_msa();
 
   /* check alignment */
-  check_msa(instance);
+  if (!opts.force_mode)
+    check_msa(instance);
 
   if (opts.use_pattern_compression)
     parted_msa.compress_patterns();
 
   parted_msa.set_model_empirical_params();
+
+  if (!opts.force_mode)
+    check_models(instance);
 
   LOG_INFO << endl;
 
@@ -585,12 +628,6 @@ void print_final_output(const RaxmlInstance& instance, const Checkpoint& checkp)
 
     LOG_INFO << "Best ML tree saved to: " << sysutil_realpath(opts.best_tree_file()) << endl;
 
-    RaxmlPartitionStream model_stream(opts.best_model_file(), true);
-    model_stream.print_model_params(true);
-    model_stream << instance.parted_msa;
-
-    LOG_INFO << "Optimized model saved to: " << sysutil_realpath(opts.best_model_file()) << endl;
-
     if (opts.command == Command::all)
     {
       assert(instance.bs_tree);
@@ -601,6 +638,16 @@ void print_final_output(const RaxmlInstance& instance, const Checkpoint& checkp)
       LOG_INFO << "Best ML tree with bootstrap support values saved to: " <<
           sysutil_realpath(opts.support_tree_file()) << endl;
     }
+  }
+
+  if (opts.command == Command::search || opts.command == Command::all ||
+      opts.command == Command::evaluate)
+  {
+    RaxmlPartitionStream model_stream(opts.best_model_file(), true);
+    model_stream.print_model_params(true);
+    model_stream << instance.parted_msa;
+
+    LOG_INFO << "Optimized model saved to: " << sysutil_realpath(opts.best_model_file()) << endl;
   }
 
   if (opts.command == Command::bootstrap || opts.command == Command::all)
@@ -622,13 +669,17 @@ void print_final_output(const RaxmlInstance& instance, const Checkpoint& checkp)
 
   LOG_INFO << "\nExecution log saved to: " << sysutil_realpath(opts.log_file()) << endl;
 
-  LOG_INFO << "\nElapsed time: " << FMT_PREC3(sysutil_elapsed_seconds()) << " seconds\n";
+  LOG_INFO << "\nAnalysis started: " << global_timer().start_time();
+  LOG_INFO << " / finished: " << global_timer().current_time() << std::endl;
+  LOG_INFO << "\nElapsed time: " << FMT_PREC3(global_timer().elapsed_seconds()) << " seconds";
   if (checkp.elapsed_seconds > 0.)
   {
-    LOG_INFO << "Total analysis time: " <<
-                FMT_PREC3(checkp.elapsed_seconds + sysutil_elapsed_seconds()) << " seconds\n";
+    LOG_INFO << " (this run) / ";
+    LOG_INFO << FMT_PREC3(checkp.elapsed_seconds + global_timer().elapsed_seconds()) <<
+        " seconds (total with restarts)";
   }
-  LOG_INFO << endl;
+
+  LOG_INFO << endl << endl;
 }
 
 void thread_main(RaxmlInstance& instance, CheckpointManager& cm)
@@ -899,6 +950,12 @@ int main(int argc, char** argv)
         {
           LOG_WARN << "WARNING: Running in REDO mode: existing checkpoints are ignored, "
               "and all result files will be overwritten!" << endl << endl;
+        }
+
+        if (instance.opts.force_mode)
+        {
+          LOG_WARN << "WARNING: Running in FORCE mode: all safety checks are disabled!"
+              << endl << endl;
         }
 
         /* init load balancer */

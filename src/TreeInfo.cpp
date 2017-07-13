@@ -325,7 +325,7 @@ void build_clv(ProbVector::const_iterator probs, size_t sites, WeightVector::con
 }
 
 void set_partition_tips(const Options& opts, const MSA& msa, const PartitionRange& part_region,
-                        pll_partition_t* partition)
+                        pll_partition_t* partition, const unsigned int *map)
 {
   /* set pattern weights */
   if (!msa.weights().empty())
@@ -353,13 +353,13 @@ void set_partition_tips(const Options& opts, const MSA& msa, const PartitionRang
   {
     for (size_t i = 0; i < msa.size(); ++i)
     {
-      pll_set_tip_states(partition, i, partition->map, msa.at(i).c_str() + part_region.start);
+      pll_set_tip_states(partition, i, map, msa.at(i).c_str() + part_region.start);
     }
   }
 }
 
 void set_partition_tips(const Options& opts, const MSA& msa, const PartitionRange& part_region,
-                        pll_partition_t* partition, const WeightVector& weights)
+                        pll_partition_t* partition, const unsigned int *map, const WeightVector& weights)
 {
   assert(!weights.empty());
 
@@ -407,7 +407,7 @@ void set_partition_tips(const Options& opts, const MSA& msa, const PartitionRang
       }
       assert(pos == comp_weights.size());
 
-      pll_set_tip_states(partition, i, partition->map, bs_seq.data());
+      pll_set_tip_states(partition, i, map, bs_seq.data());
     }
   }
 
@@ -445,6 +445,13 @@ pll_partition_t* create_pll_partition(const Options& opts, const PartitionInfo& 
   {
     attrs |= PLL_ATTRIB_SITES_REPEATS;
   }
+  // NOTE: if partition is split among multiple threads, asc. bias correction must be applied only once!
+  if (model.ascbias_type() == AscBiasCorrection::lewis ||
+      (model.ascbias_type() != AscBiasCorrection::none && part_region.master()))
+  {
+    attrs |=  PLL_ATTRIB_AB_FLAG;
+    attrs |= (unsigned int) model.ascbias_type();
+  }
 
   /* part_length doesn't include columns with zero weight */
   const size_t part_length = weights.empty() ? part_region.length :
@@ -470,12 +477,14 @@ pll_partition_t* create_pll_partition(const Options& opts, const PartitionInfo& 
   if (!partition)
     throw runtime_error("ERROR creating pll_partition: " + string(pll_errmsg));
 
-  partition->map = model.charmap();
+
+  if (part_region.master() && !model.ascbias_weights().empty())
+    pll_set_asc_state_weights(partition, model.ascbias_weights().data());
 
   if (part_length == part_region.length)
-    set_partition_tips(opts, msa, part_region, partition);
+    set_partition_tips(opts, msa, part_region, partition, model.charmap());
   else
-    set_partition_tips(opts, msa, part_region, partition, weights);
+    set_partition_tips(opts, msa, part_region, partition, model.charmap(), weights);
 
   assign(partition, model);
 

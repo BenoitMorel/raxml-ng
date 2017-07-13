@@ -9,8 +9,8 @@ set (USE_VCF OFF)
 
 # set both following options to OFF to build a portable binary 
 # (don't worry, libpll will still have full SIMD support!)
-set (ENABLE_RAXML_SIMD ON CACHE BOOL "Enable SIMD instructions in RAxML (non-portable but slightly faster)")
-set (ENABLE_PLLMOD_SIMD ON CACHE BOOL "Enable SIMD instructions in pll-modules (non-portable but slightly faster)")
+set (ENABLE_RAXML_SIMD OFF CACHE BOOL "Enable SIMD instructions in RAxML (non-portable but slightly faster)")
+set (ENABLE_PLLMOD_SIMD OFF CACHE BOOL "Enable SIMD instructions in pll-modules (non-portable but slightly faster)")
 
 # build a static binary
 set(STATIC_BUILD OFF CACHE BOOL "Build static binary")
@@ -70,9 +70,9 @@ if (ENABLE_RAXML_SIMD)
 endif()
 
 if(ENABLE_PLLMOD_SIMD)
-  set(PLLMOD_AUTOCONF_ARGS "")
+  set(PLLMOD_AUTOCONF_ARGS "--enable-avx --enable-sse")
 else()
-  set(PLLMOD_AUTOCONF_ARGS "--disable-avx --disable-sse")
+  set(PLLMOD_AUTOCONF_ARGS "")
 endif()
 
 if(ENABLE_PTHREADS)
