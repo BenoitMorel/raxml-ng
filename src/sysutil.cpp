@@ -270,4 +270,9 @@ const SystemTimer& global_timer()
   return systimer;
 }
 
+void reset_global_timer()
+{
+  systimer =  SystemTimer();
+}
+
 

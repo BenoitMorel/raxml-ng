@@ -32,6 +32,7 @@ public:
     istringstream is(command_str);
     is >> _threadsNumber;
     LOG_INFO << "Threads : " << _threadsNumber << endl;
+    _args.push_back("raxml");
     while (is) {
       string str;
       is >> str;
@@ -40,9 +41,9 @@ public:
     }
   }
 
-  void run(MPI_Comm com) const {
-    std::vector<char *> argv(_args.size() + 2, 0);
-    argv[0] = "raxml";
+  void run(MPI_Comm comm) const {
+    ParallelContext::set_comm(comm);
+    std::vector<char *> argv(_args.size() + 1, 0);
     for (unsigned int i = 0; i < _args.size(); ++i) {
       argv [i + 1] = (char *)_args[i].c_str(); //todobenoit const hack here
     }
@@ -59,7 +60,9 @@ void read_commands_file(const string &input_file,
 {
   ifstream is(input_file);
   for(string line; getline( is, line ); ) {
-    commands.push_back(line);
+    if (line.size() && line.at(0) != '#') {
+      commands.push_back(line);
+    }
   }
 }
 
@@ -67,7 +70,6 @@ void read_commands_file(const string &input_file,
 
 int multi_raxml(int argc, char** argv)
 {
-  
   if (argc != 2) {
     LOG_ERROR << "Invalid syntax: multi-raxml requires one argument" << endl;
     return 0;
@@ -83,9 +85,9 @@ int multi_raxml(int argc, char** argv)
   for (unsigned int i = 0; i < commands_str.size(); ++i) {
     commands[i] = RaxmlCommand(commands_str[i]);
   }
-    for (const auto &command: commands) {
-      command.run(MPI_COMM_WORLD);
-    }
+  for (const auto &command: commands) {
+    command.run(MPI_COMM_WORLD);
+  }
   return 0; 
 }
 

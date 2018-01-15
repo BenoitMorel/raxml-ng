@@ -58,6 +58,8 @@ public:
   void add_log_stream(std::ostream* stream);
   void set_log_level(LogLevel level);
 
+  void close_log_file();
+
   /* singleton: remove copy/move constructors and assignment ops */
   Logging(const Logging& other) = delete;
   Logging(Logging&& other) = delete;

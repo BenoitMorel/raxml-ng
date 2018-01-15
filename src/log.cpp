@@ -38,6 +38,13 @@ void Logging::set_log_filename(const std::string& fname, ios_base::openmode mode
   _logfile.open(fname, mode);
 }
 
+void Logging::close_log_file()
+{
+  if (_logfile.is_open()) {
+    _logfile.close();
+  }
+}
+
 void Logging::add_log_stream(std::ostream* stream)
 {
   if (stream)

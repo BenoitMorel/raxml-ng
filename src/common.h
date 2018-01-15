@@ -76,6 +76,7 @@ unsigned long sysutil_get_cpu_features();
 unsigned int sysutil_simd_autodetect();
 
 const SystemTimer& global_timer();
+void reset_global_timer();
 
 std::string sysutil_realpath(const std::string& path);
 bool sysutil_file_exists(const std::string& fname, int access_mode = F_OK);
