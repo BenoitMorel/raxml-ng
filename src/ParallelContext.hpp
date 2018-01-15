@@ -30,6 +30,9 @@ class Options;
 class ParallelContext
 {
 public:
+#ifdef _RAXML_MPI
+  static void set_comm(MPI_Comm comm);
+#endif
   static void init_mpi(int argc, char * argv[]);
   static void init_pthreads(const Options& opts, const std::function<void()>& thread_main);
   static void resize_buffer(size_t size);
@@ -73,6 +76,9 @@ public:
     LockType _lock;
   };
 private:
+#ifdef _RAXML_MPI
+  static MPI_Comm _comm;
+#endif
   static std::vector<ThreadType> _threads;
   static size_t _num_threads;
   static size_t _num_ranks;
