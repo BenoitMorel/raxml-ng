@@ -86,17 +86,14 @@ void *master_thread(void *) {
     MPI_Irecv(&tmp, 1, MPI_INT, MPI_ANY_SOURCE, 42, MPI_COMM_WORLD, &request);
     MPI_Test(&request, &flag, &stat); 
     while(!flag) {
-      std::this_thread::sleep_for (std::chrono::milliseconds(20));
+      std::this_thread::sleep_for (std::chrono::milliseconds(200));
       MPI_Test(&request, &flag, &stat); 
     }
     if (tmp == -1) {
       return 0;
     }
-    std::cerr << "m send " << currentCommand << std::endl; 
     MPI_Send(&currentCommand, 1, MPI_INT, stat.MPI_SOURCE, 42, MPI_COMM_WORLD);
-    std::cerr << "m sent " << currentCommand << std::endl; 
     currentCommand++;
-    std::this_thread::sleep_for (std::chrono::milliseconds(20));
   }
   return 0;
 }
@@ -113,9 +110,7 @@ int requestCurrentCommand() {
     int res = -1;
     int tmp = 0;
     MPI_Status stat;
-    std::cerr << "s ask " << std::endl; 
     MPI_Sendrecv(&tmp, 1, MPI_INT, 0, 42, &res, 1, MPI_INT, 0, 42, MPI_COMM_WORLD, &stat);
-    std::cerr << "s got " << res << std::endl; 
     return res;
   } else {
     return currentCommand++;
@@ -127,9 +122,7 @@ int getCurrentCommand(MPI_Comm comm) {
   if (!getRank(comm)) {
     currentCommand = requestCurrentCommand();
   }
-  std::cerr << "bef bcast" << std::endl;
   MPI_Bcast(&currentCommand, 1, MPI_INT, 0, comm);
-  std::cerr << "aft bcast" << std::endl;
   return currentCommand;
 }
 
@@ -137,7 +130,10 @@ void slaves_thread(const vector<RaxmlCommand *> &commands, MPI_Comm comm) {
   int command = 0;
   while ((command = getCurrentCommand(comm)) < commands.size()) {
     std::cerr << "Proc " << getRank(MPI_COMM_WORLD) << " " << " command " << command << std::endl;
-    std::this_thread::sleep_for (std::chrono::milliseconds(1000));
+    //std::this_thread::sleep_for (std::chrono::milliseconds(1000));
+    
+    MPI_Barrier(comm);
+    commands[command]->run(comm);
     MPI_Barrier(comm);
     //std::cerr << "after barrier" << std::endl;
   }
