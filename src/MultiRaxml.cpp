@@ -8,6 +8,7 @@
 #include <vector>
 #include <string>
 #include <sstream>
+#include <algorithm>
 
 #include "log.hpp"
 #include "ParallelContext.hpp"
@@ -47,8 +48,14 @@ public:
     for (unsigned int i = 0; i < _args.size(); ++i) {
       argv [i + 1] = (char *)_args[i].c_str(); //todobenoit const hack here
     }
+
     raxml(argv.size() - 1, &argv[0]);
   }
+  
+  static bool comparePtr(RaxmlCommand* a, RaxmlCommand* b) { 
+    return (a->_threadsNumber < b->_threadsNumber); 
+  }
+    
 private:
   int _threadsNumber;
   vector<string> _args;
@@ -81,12 +88,16 @@ int multi_raxml(int argc, char** argv)
   string input_file = argv[1]; 
   vector<string> commands_str;
   read_commands_file(input_file, commands_str);
-  vector<RaxmlCommand> commands(commands_str.size());
-  for (unsigned int i = 0; i < commands_str.size(); ++i) {
-    commands[i] = RaxmlCommand(commands_str[i]);
+  vector<RaxmlCommand *> commands;
+  for (const auto &str: commands_str) {
+    commands.push_back(new RaxmlCommand(str));
   }
-  for (const auto &command: commands) {
-    command.run(MPI_COMM_WORLD);
+  std::sort(commands.rbegin(), commands.rend(), RaxmlCommand::comparePtr);
+  for (auto command: commands) {
+    command->run(MPI_COMM_WORLD);
+  }
+  for (auto command: commands) {
+    delete command;
   }
   return 0; 
 }
