@@ -20,29 +20,19 @@
 */
 
 #include "Raxml.hpp"
+#include "MultiRaxml.hpp"
 #include "ParallelContext.hpp"
-
+#include "log.hpp"
+#include <iostream>
 /**
  *  Normal Raxml run
- */
-int main(int argc, char** argv)
-{
-  ParallelContext::init_mpi(argc, argv);
-
-  int res = raxml(argc, argv);
-
-  clean_exit(res);
-
-  return res;
-}
-
-/**
- *  Multi-Raxml run
  */
 /*
 int main(int argc, char** argv)
 {
   ParallelContext::init_mpi(argc, argv);
+  
+  logger().add_log_stream(&cout);
 
   int res = raxml(argc, argv);
 
@@ -51,4 +41,20 @@ int main(int argc, char** argv)
   return res;
 }
 */
+
+/**
+ *  Multi-Raxml run
+ */
+int main(int argc, char** argv)
+{
+  ParallelContext::init_mpi(argc, argv);
+ 
+  logger().add_log_stream(&std::cout);
+  
+  int res = multi_raxml(argc, argv);
+
+  clean_exit(res);
+
+  return res;
+}
 
