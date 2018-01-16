@@ -49,7 +49,6 @@ int main(int argc, char** argv)
 {
   ParallelContext::init_mpi(argc, argv);
  
-  logger().add_log_stream(&std::cout);
   
   int res = multi_raxml(argc, argv);
   ParallelContext::set_comm(MPI_COMM_WORLD);
