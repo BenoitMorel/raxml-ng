@@ -196,6 +196,7 @@ int multi_raxml(int argc, char** argv)
   } else {
     string input_file = argv[1]; 
     slaves_thread(input_file, globalWorld, localWorld);
+    MPI_Barrier(localWorld);
   }
   if (0 == getRank(localWorld)) {
     MPI_Send(&MPI_SIGNAL_KILL_MASTER, 1, MPI_INT, MASTER_RANK, MPI_TAG_GET_CMD, globalWorld); 
