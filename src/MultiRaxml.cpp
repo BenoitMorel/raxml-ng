@@ -107,7 +107,8 @@ void *master_thread(void *d) {
       std::cout << "thread_master received kill signal" << std::endl;
       return 0;
     } else if (tmp == MPI_SIGNAL_GET_CMD) {
-      std::cout << "thread master sends command " << currentCommand << " to rank " << stat.MPI_SOURCE << std::endl;
+      std::cout << "thread master sends command " << currentCommand <<
+        " to rank " << stat.MPI_SOURCE << std::endl;
       MPI_Send(&currentCommand, 1, MPI_INT, stat.MPI_SOURCE, MPI_TAG_GET_CMD, globalComm);
       currentCommand++;
     } else {
@@ -157,20 +158,19 @@ int multi_raxml(int argc, char** argv)
     std::cout << "Invalid syntax: multi-raxml requires one argument" << endl;
     return 0;
   }
-  int rank = getRank(MPI_COMM_WORLD);
-  MPI_Comm dupworldGlobal;
-  MPI_Comm_dup(MPI_COMM_WORLD, &dupworldGlobal);
-  MPI_Comm dupworldLocal;
-  MPI_Comm_split(MPI_COMM_WORLD, rank == 0, rank - 1, &dupworldLocal);
-
-  if (!rank) {
-    master_thread(dupworldGlobal);
+  MPI_Comm globalWorld = MPI_COMM_WORLD;
+  int globalRank = getRank(globalWorld);
+  MPI_Comm localWorld;
+  MPI_Comm_split(MPI_COMM_WORLD, globalRank == 0, globalRank - 1, &localWorld);
+  
+  if (!globalRank) {
+    master_thread(globalWorld);
   } else {
     string input_file = argv[1]; 
-    slaves_thread(input_file, dupworldGlobal, dupworldLocal);
+    slaves_thread(input_file, globalWorld, localWorld);
   }  
-  if (0 == getRank(dupworldLocal)) {
-    MPI_Send(&MPI_SIGNAL_KILL_MASTER, 1, MPI_INT, 0, MPI_TAG_GET_CMD, dupworldGlobal); 
+  if (0 == getRank(localWorld)) {
+    MPI_Send(&MPI_SIGNAL_KILL_MASTER, 1, MPI_INT, 0, MPI_TAG_GET_CMD, globalWorld); 
   }
   return 0; 
 }
