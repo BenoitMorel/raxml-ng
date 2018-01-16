@@ -60,24 +60,26 @@ public:
     }
   }
 
-  void run(MPI_Comm comm) const {
+  void run(MPI_Comm comm, MPI_Comm globalComm) const {
     ParallelContext::set_comm(comm);
     std::vector<char *> argv(_args.size() + 1, 0);
     for (unsigned int i = 0; i < _args.size(); ++i) {
       argv [i + 1] = (char *)_args[i].c_str(); //todobenoit const hack here
     }
     if (!getRank(comm)) {
-      std::cout << "Running ";
-      printCommand();
+      std::cout << getDebugStr(getRank(globalComm), getSize(comm));
     }
     raxml(argv.size() - 1, &argv[0]);
   }
   
-  void printCommand() const {
+  std::string getDebugStr(int globalRank, int threads) const {
+    ostringstream os;
+    os << "Proc " << globalRank << ":" << globalRank + threads - 1 << " runs: ";
     for (const auto &str: _args) {
-      std::cout << str << " ";
-    } 
-    std::cout << std::endl;
+      os << str << " ";
+    }
+    os << std::endl;
+    return os.str();
   }
 
   static bool comparePtr(shared_ptr<RaxmlCommand> a, shared_ptr<RaxmlCommand> b) { 
@@ -156,7 +158,6 @@ void slaves_thread(const std::string &input_file, MPI_Comm globalComm, MPI_Comm 
   RaxmlCommands commands;
   int currCommand = 0;
   readCommands(input_file, commands);
-  //int globalRank = getRank(globalComm);
   while ((currCommand = getCurrentCommand(globalComm, localComm)) < (int)commands.size()) {
     auto command = commands[currCommand];
     bool runTheCommand = true;
@@ -164,17 +165,14 @@ void slaves_thread(const std::string &input_file, MPI_Comm globalComm, MPI_Comm 
       MPI_Comm newComm;
       int size = getSize(localComm);
       int rank = getRank(localComm);
-      //bool smallerComm = (globalRank > size + 1); //todobenoit check
       int color = rank < (size / 2);
       int key = rank % (size / 2);
       MPI_Comm_split(localComm, color, key, &newComm);
       runTheCommand &= !color;
       localComm = newComm;
     }
-    std::cout << getRank(globalComm) << " plip " << currCommand << std::endl;
     if (runTheCommand) {
-      std::cerr << "Proc " << getRank(globalComm) << " " << " command " << currCommand << std::endl;
-      command->run(localComm);
+      command->run(localComm, globalComm);
     }
   }
 }
