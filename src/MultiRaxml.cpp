@@ -7,6 +7,7 @@
 #include <iostream>
 #include <vector>
 #include <string>
+#include <cmath>
 #include <sstream>
 #include <algorithm>
 #include <iostream>       // std::cout, std::endl
@@ -37,6 +38,13 @@ int getSize(MPI_Comm comm)
   return res;
 }
 
+int sitesToThreads(int sites)
+{
+  int threads = std::max(sites, 1000) / 1000;
+  // lowest power of 2
+  return pow(2,floor(log(threads)/log(2)));
+}
+
 class RaxmlCommand {
 public:
   RaxmlCommand() :
@@ -51,25 +59,33 @@ public:
     _args(0)
   {
     istringstream is(command_str);
-    is >> _threadsNumber;
     _args.push_back("raxml");
     while (is) {
       string str;
       is >> str;
       _args.push_back(str);
     }
+    _argv = std::vector<char *>(_args.size() + 1, 0);
+    for (unsigned int i = 0; i < _args.size(); ++i) {
+      _argv [i + 1] = (char *)_args[i].c_str(); //todobenoit const hack here
+    }
+
+    _valid = (EXIT_SUCCESS == 
+        get_dimensions(_argv.size() - 1, &_argv[0], _sites, _tips));
+    _threadsNumber = sitesToThreads(_sites);
+    //std::cout << _sites << " sites -> " << _threadsNumber << " threads" << std::endl;
   }
 
   void run(MPI_Comm comm, MPI_Comm globalComm) const {
+    if (!_valid) {
+      cerr << "Warning: invalid raxml command. Skipping." << endl;
+      return;
+    }
     ParallelContext::set_comm(comm);
-    std::vector<char *> argv(_args.size() + 1, 0);
-    for (unsigned int i = 0; i < _args.size(); ++i) {
-      argv [i + 1] = (char *)_args[i].c_str(); //todobenoit const hack here
-    }
     if (!getRank(comm)) {
-      std::cout << getDebugStr(getRank(globalComm), getSize(comm));
+      cout << getDebugStr(getRank(globalComm), getSize(comm));
     }
-    raxml(argv.size() - 1, &argv[0]);
+    raxml(_argv.size() - 1, (char **)&_argv[0]); // todobenoit const hack here
   }
   
   std::string getDebugStr(int globalRank, int threads) const {
@@ -82,7 +98,10 @@ public:
     return os.str();
   }
 
-  static bool comparePtr(shared_ptr<RaxmlCommand> a, shared_ptr<RaxmlCommand> b) { 
+  static bool comparePtr(shared_ptr<RaxmlCommand> a, shared_ptr<RaxmlCommand> b) {
+    if (a->_threadsNumber == b->_threadsNumber) {
+      return a->_tips < b->_tips;
+    }
     return (a->_threadsNumber < b->_threadsNumber); 
   }
 
@@ -91,6 +110,10 @@ public:
 private:
   int _threadsNumber;
   vector<string> _args;
+  std::vector<char *> _argv;
+  int _sites;
+  int _tips;
+  bool _valid;
 };
 using RaxmlCommands = vector<shared_ptr<RaxmlCommand> >;
 

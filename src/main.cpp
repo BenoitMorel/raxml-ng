@@ -24,15 +24,16 @@
 #include "ParallelContext.hpp"
 #include "log.hpp"
 #include <iostream>
+
+#if 0
 /**
  *  Normal Raxml run
  */
-/*
 int main(int argc, char** argv)
 {
   ParallelContext::init_mpi(argc, argv);
   
-  logger().add_log_stream(&cout);
+  logger().add_log_stream(&std::cout);
 
   int res = raxml(argc, argv);
 
@@ -40,11 +41,12 @@ int main(int argc, char** argv)
 
   return res;
 }
-*/
 
+#else
 /**
  *  Multi-Raxml run
  */
+
 int main(int argc, char** argv)
 {
   ParallelContext::init_mpi(argc, argv);
@@ -56,4 +58,4 @@ int main(int argc, char** argv)
 
   return res;
 }
-
+#endif
