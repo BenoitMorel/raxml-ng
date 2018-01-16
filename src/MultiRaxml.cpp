@@ -18,15 +18,22 @@
 using namespace std;
 
 
-int MPI_TAG_GET_CMD = 0;
-int MPI_SIGNAL_KILL_MASTER = 1;
-int MPI_SIGNAL_GET_CMD = 2;
+const int MPI_TAG_GET_CMD = 0;
+const int MPI_SIGNAL_KILL_MASTER = 1;
+const int MPI_SIGNAL_GET_CMD = 2;
 int MASTER_RANK = 0;
 
 int getRank(MPI_Comm comm)
 {
   int res;
   MPI_Comm_rank(comm, &res);
+  return res;
+}
+
+int getSize(MPI_Comm comm)
+{
+  int res;
+  MPI_Comm_size(comm, &res);
   return res;
 }
 
@@ -149,10 +156,26 @@ void slaves_thread(const std::string &input_file, MPI_Comm globalComm, MPI_Comm 
   RaxmlCommands commands;
   int currCommand = 0;
   readCommands(input_file, commands);
+  //int globalRank = getRank(globalComm);
   while ((currCommand = getCurrentCommand(globalComm, localComm)) < (int)commands.size()) {
     auto command = commands[currCommand];
-    std::cerr << "Proc " << getRank(globalComm) << " " << " command " << currCommand << std::endl;
-    command->run(localComm);
+    bool runTheCommand = true;
+    while (command->getThreadsNumber() < getSize(localComm)) {
+      MPI_Comm newComm;
+      int size = getSize(localComm);
+      int rank = getRank(localComm);
+      //bool smallerComm = (globalRank > size + 1); //todobenoit check
+      int color = rank < (size / 2);
+      int key = rank % (size / 2);
+      MPI_Comm_split(localComm, color, key, &newComm);
+      runTheCommand &= !color;
+      localComm = newComm;
+    }
+    std::cout << getRank(globalComm) << " plip " << currCommand << std::endl;
+    if (runTheCommand) {
+      std::cerr << "Proc " << getRank(globalComm) << " " << " command " << currCommand << std::endl;
+      command->run(localComm);
+    }
   }
 }
 
@@ -164,18 +187,20 @@ int multi_raxml(int argc, char** argv)
   }
   MPI_Comm globalWorld = MPI_COMM_WORLD;
   int globalRank = getRank(globalWorld);
+  MASTER_RANK = getSize(globalWorld) - 1;
   MPI_Comm localWorld;
-  MPI_Comm_split(MPI_COMM_WORLD, globalRank == MASTER_RANK, globalRank - 1, &localWorld);
+  MPI_Comm_split(MPI_COMM_WORLD, globalRank == MASTER_RANK, globalRank, &localWorld);
   
-  if (!globalRank) {
+  if (MASTER_RANK == globalRank) {
     master_thread(globalWorld);
   } else {
     string input_file = argv[1]; 
     slaves_thread(input_file, globalWorld, localWorld);
-  }  
+  }
   if (0 == getRank(localWorld)) {
     MPI_Send(&MPI_SIGNAL_KILL_MASTER, 1, MPI_INT, MASTER_RANK, MPI_TAG_GET_CMD, globalWorld); 
   }
+  std::cout << "rank " << globalRank << " termidated" << std::endl;
   return 0; 
 }
 
