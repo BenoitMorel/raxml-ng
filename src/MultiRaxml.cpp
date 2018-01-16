@@ -21,6 +21,7 @@ using namespace std;
 int MPI_TAG_GET_CMD = 0;
 int MPI_SIGNAL_KILL_MASTER = 1;
 int MPI_SIGNAL_GET_CMD = 2;
+int MASTER_RANK = 0;
 
 int getRank(MPI_Comm comm)
 {
@@ -75,6 +76,8 @@ public:
   static bool comparePtr(shared_ptr<RaxmlCommand> a, shared_ptr<RaxmlCommand> b) { 
     return (a->_threadsNumber < b->_threadsNumber); 
   }
+
+  int getThreadsNumber() const {return _threadsNumber;}
     
 private:
   int _threadsNumber;
@@ -94,11 +97,11 @@ void read_commands_file(const string &input_file,
   }
 }
 
-unsigned int currentCommand = 0;
 
 // master thread
 void *master_thread(void *d) {
   MPI_Comm globalComm = (MPI_Comm) d;
+  int currentCommand = 0;
   while(true) {
     MPI_Status stat;
     int tmp = 0;
@@ -125,8 +128,8 @@ int getCurrentCommand(MPI_Comm globalComm, MPI_Comm localComm) {
   int requestingRank = 0;
   if (getRank(localComm) == requestingRank) {
     MPI_Status stat;
-    MPI_Sendrecv(&MPI_SIGNAL_GET_CMD, 1, MPI_INT, 0, MPI_TAG_GET_CMD, 
-        &currentCommand, 1, MPI_INT, 0, MPI_TAG_GET_CMD, globalComm, &stat);
+    MPI_Sendrecv(&MPI_SIGNAL_GET_CMD, 1, MPI_INT, MASTER_RANK, MPI_TAG_GET_CMD, 
+        &currentCommand, 1, MPI_INT, MASTER_RANK, MPI_TAG_GET_CMD, globalComm, &stat);
   }
   MPI_Bcast(&currentCommand, 1, MPI_INT, requestingRank, localComm);
   return currentCommand;
@@ -144,11 +147,12 @@ void readCommands(const std::string &input_file, RaxmlCommands &commands)
 
 void slaves_thread(const std::string &input_file, MPI_Comm globalComm, MPI_Comm localComm) {
   RaxmlCommands commands;
-  int command = 0;
+  int currCommand = 0;
   readCommands(input_file, commands);
-  while ((command = getCurrentCommand(globalComm, localComm)) < (int)commands.size()) {
-    std::cerr << "Proc " << getRank(globalComm) << " " << " command " << command << std::endl;
-    commands[command]->run(localComm);
+  while ((currCommand = getCurrentCommand(globalComm, localComm)) < (int)commands.size()) {
+    auto command = commands[currCommand];
+    std::cerr << "Proc " << getRank(globalComm) << " " << " command " << currCommand << std::endl;
+    command->run(localComm);
   }
 }
 
@@ -161,7 +165,7 @@ int multi_raxml(int argc, char** argv)
   MPI_Comm globalWorld = MPI_COMM_WORLD;
   int globalRank = getRank(globalWorld);
   MPI_Comm localWorld;
-  MPI_Comm_split(MPI_COMM_WORLD, globalRank == 0, globalRank - 1, &localWorld);
+  MPI_Comm_split(MPI_COMM_WORLD, globalRank == MASTER_RANK, globalRank - 1, &localWorld);
   
   if (!globalRank) {
     master_thread(globalWorld);
@@ -170,7 +174,7 @@ int multi_raxml(int argc, char** argv)
     slaves_thread(input_file, globalWorld, localWorld);
   }  
   if (0 == getRank(localWorld)) {
-    MPI_Send(&MPI_SIGNAL_KILL_MASTER, 1, MPI_INT, 0, MPI_TAG_GET_CMD, globalWorld); 
+    MPI_Send(&MPI_SIGNAL_KILL_MASTER, 1, MPI_INT, MASTER_RANK, MPI_TAG_GET_CMD, globalWorld); 
   }
   return 0; 
 }
