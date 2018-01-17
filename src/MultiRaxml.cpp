@@ -17,8 +17,8 @@
 #include "ParallelContext.hpp"
 
 using namespace std;
-
-
+using Timer =  chrono::time_point<chrono::system_clock>; 
+                             
 const int MPI_TAG_GET_CMD = 0;
 const int MPI_SIGNAL_KILL_MASTER = 1;
 const int MPI_SIGNAL_GET_CMD = 2;
@@ -72,13 +72,16 @@ public:
 
     _valid = (EXIT_SUCCESS == 
         get_dimensions(_argv.size() - 1, &_argv[0], _sites, _tips));
+
     _threadsNumber = sitesToThreads(_sites);
     //std::cout << _sites << " sites -> " << _threadsNumber << " threads" << std::endl;
   }
 
   void run(MPI_Comm comm, MPI_Comm globalComm) const {
     if (!_valid) {
-      cerr << "Warning: invalid raxml command. Skipping." << endl;
+      if (!getRank(comm)) {
+        cerr << getDebugStr(getRank(globalComm), getSize(comm));
+      }
       return;
     }
     ParallelContext::set_comm(comm);
@@ -90,7 +93,11 @@ public:
   
   std::string getDebugStr(int globalRank, int threads) const {
     ostringstream os;
-    os << "Proc " << globalRank << ":" << globalRank + threads - 1 << " runs: ";
+    if (!_valid) {
+      os << "Invalid command: ";
+    } else {
+      os << "Proc " << globalRank << ":" << globalRank + threads - 1 << " runs: ";
+    }
     for (const auto &str: _args) {
       os << str << " ";
     }
@@ -206,6 +213,7 @@ int multi_raxml(int argc, char** argv)
     std::cout << "Invalid syntax: multi-raxml requires one argument" << endl;
     return 0;
   }
+  Timer begin = std::chrono::system_clock::now();;
   MPI_Comm globalWorld = MPI_COMM_WORLD;
   int globalRank = getRank(globalWorld);
   MASTER_RANK = getSize(globalWorld) - 1;
@@ -222,7 +230,12 @@ int multi_raxml(int argc, char** argv)
   if (0 == getRank(localWorld)) {
     MPI_Send(&MPI_SIGNAL_KILL_MASTER, 1, MPI_INT, MASTER_RANK, MPI_TAG_GET_CMD, globalWorld); 
   }
-  std::cout << "rank " << globalRank << " termidated" << std::endl;
+  if (MASTER_RANK == globalRank) {
+    Timer end = std::chrono::system_clock::now();
+    int elapsed_sec = chrono::duration_cast<chrono::seconds>
+      (end-begin).count();
+    std::cout << "Elapsed time : " << elapsed_sec << "s" << std::endl;
+  }
   return 0; 
 }
 
