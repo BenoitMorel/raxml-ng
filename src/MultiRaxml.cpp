@@ -25,6 +25,14 @@ const int MPI_SIGNAL_KILL_MASTER = 1;
 const int MPI_SIGNAL_GET_CMD = 2;
 int MASTER_RANK = 0;
 
+void print_elapsed(const Timer &begin)
+{
+  Timer end = chrono::system_clock::now();
+  int elapsed_sec = chrono::duration_cast<chrono::seconds>
+    (end-begin).count();
+  cout << "Elapsed time : " << elapsed_sec << "s" << endl;
+}
+
 int getRank(MPI_Comm comm)
 {
   int res;
@@ -55,9 +63,7 @@ public:
 
   }
 
-  RaxmlCommand(const string &command_str) :
-    _threadsNumber(0),
-    _args(0)
+  RaxmlCommand(const string &command_str)
   {
     istringstream is(command_str);
     _args.push_back("raxml");
@@ -77,13 +83,9 @@ public:
     _threadsNumber = sitesToThreads(_sites);
   }
 
+  bool valid() const {return _valid;}
+
   void run(MPI_Comm comm, MPI_Comm globalComm) const {
-    if (!_valid) {
-      if (!getRank(comm)) {
-        cerr << getDebugStr(getRank(globalComm), getSize(comm));
-      }
-      return;
-    }
     ParallelContext::set_comm(comm);
     if (!getRank(comm)) {
       cout << getDebugStr(getRank(globalComm), getSize(comm));
@@ -125,18 +127,6 @@ private:
 using RaxmlCommands = vector<shared_ptr<RaxmlCommand> >;
 
 
-void read_commands_file(const string &input_file,
-    vector<string> &commands)
-{
-  ifstream is(input_file);
-  for(string line; getline( is, line ); ) {
-    if (line.size() && line.at(0) != '#') {
-      commands.push_back(line);
-    }
-  }
-}
-
-
 // master thread
 void *master_thread(void *d) {
   MPI_Comm globalComm = (MPI_Comm) d;
@@ -170,24 +160,43 @@ int getCurrentCommand(MPI_Comm globalComm, MPI_Comm localComm) {
     MPI_Sendrecv(&MPI_SIGNAL_GET_CMD, 1, MPI_INT, MASTER_RANK, MPI_TAG_GET_CMD, 
         &currentCommand, 1, MPI_INT, MASTER_RANK, MPI_TAG_GET_CMD, globalComm, &stat);
   }
+
   MPI_Bcast(&currentCommand, 1, MPI_INT, requestingRank, localComm);
+  MPI_Barrier(localComm);
   return currentCommand;
 }
 
-void readCommands(const string &input_file, RaxmlCommands &commands)
+void readCommands(const string &input_file, RaxmlCommands &commands, MPI_Comm localComm)
 {
   vector<string> commands_str;
-  read_commands_file(input_file, commands_str);
+  ifstream is(input_file);
+  for(string line; getline( is, line ); ) {
+    if (line.size() && line.at(0) != '#') {
+      commands_str.push_back(line);
+    }
+  }
   for (const auto &str: commands_str) {
-    commands.push_back(shared_ptr<RaxmlCommand>(new RaxmlCommand(str)));
+    RaxmlCommand *command = new RaxmlCommand(str);
+    if (command->valid()) {
+      commands.push_back(shared_ptr<RaxmlCommand>(command));
+    } else {
+      if (!getRank(localComm)) {
+        std::cout << command->getDebugStr(0, 0) << std::endl;
+      }
+    }
   }
   sort(commands.rbegin(), commands.rend(), RaxmlCommand::comparePtr); 
 }
 
-void slaves_thread(const string &input_file, MPI_Comm globalComm, MPI_Comm localComm) {
+void slaves_thread(const string &input_file, MPI_Comm globalComm, MPI_Comm localComm, Timer &begin) {
   RaxmlCommands commands;
   int currCommand = 0;
-  readCommands(input_file, commands);
+  readCommands(input_file, commands, localComm);
+  std::cout << "read " << getRank(globalComm) << std::endl;
+  MPI_Barrier(localComm);
+  if (!getRank(localComm)) {
+    print_elapsed(begin);
+  }
   while ((currCommand = getCurrentCommand(globalComm, localComm)) < (int)commands.size()) {
     auto command = commands[currCommand];
     bool runTheCommand = true;
@@ -206,6 +215,7 @@ void slaves_thread(const string &input_file, MPI_Comm globalComm, MPI_Comm local
     }
   }
 }
+
 
 int multi_raxml(int argc, char** argv)
 {
@@ -226,17 +236,14 @@ int multi_raxml(int argc, char** argv)
     master_thread(globalWorld);
   } else {
     string input_file = argv[1]; 
-    slaves_thread(input_file, globalWorld, localWorld);
+    slaves_thread(input_file, globalWorld, localWorld, begin);
     MPI_Barrier(localWorld);
   }
   if (0 == getRank(localWorld)) {
     MPI_Send(&MPI_SIGNAL_KILL_MASTER, 1, MPI_INT, MASTER_RANK, MPI_TAG_GET_CMD, globalWorld); 
   }
   if (MASTER_RANK == globalRank) {
-    Timer end = chrono::system_clock::now();
-    int elapsed_sec = chrono::duration_cast<chrono::seconds>
-      (end-begin).count();
-    cout << "Elapsed time : " << elapsed_sec << "s" << endl;
+    print_elapsed(begin);
   }
   return 0; 
 }
