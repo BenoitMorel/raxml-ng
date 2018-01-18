@@ -40,6 +40,7 @@ private:
   int getCurrentCommand();
   void send_dimensions_to_master(int cmd, int sites, int nodes);
   void readCommands(const std::string &input_file, RaxmlCommands &commands);
+  void sendStats(const Stats &s); 
 
 
 

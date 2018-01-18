@@ -16,12 +16,14 @@ namespace multiraxml {
 
 int multiraxml(int argc, char** argv)
 { 
-  if (argc != 2) {
-    cout << "Invalid syntax: multi-raxml requires one argument" << endl;
+  if (argc != 3) {
+    cout << "Invalid syntax: multi-raxml requires 2 arguments" << endl;
+    cout << "Syntax: ./multiraxml commandsFile svgoutput" << endl;
     return 0;
   }
     
   string input_file = argv[1]; 
+  string svg_output_file = argv[2]; 
   MPI_Comm savedComm = ParallelContext::get_comm();
   Timer begin = chrono::system_clock::now();;
   
@@ -36,7 +38,9 @@ int multiraxml(int argc, char** argv)
   if (isMasterRank(globalRank, globalComm)) {
     time_t timer_begin = chrono::system_clock::to_time_t(begin);
     cout << "Starting time: " << ctime(&timer_begin) << endl;
-    server_thread(globalComm);
+    Server server(globalComm);
+    server.server_thread();
+    server.saveStats(svg_output_file);
     print_elapsed(begin);
   } else {
     Client client(globalComm, localComm); 

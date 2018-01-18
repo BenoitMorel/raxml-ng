@@ -15,16 +15,26 @@ const int MPI_SIGNAL_GET_CMD = 2;
 const int MPI_SIGNAL_GET_SORTED_CMD = 3;
 const int MPI_SIGNAL_SEND_CMD_DIM = 4;
 const int MPI_SIGNAL_END_DRYRUNS = 5;
+const int MPI_SIGNAL_SEND_STATS = 6;
 const int NO_MORE_CMDS = -1;
 
 
 
 void print_elapsed(const Timer &begin);
+int get_elapsed_ms(const Timer &begin);
 int getRank(MPI_Comm comm);
 int getSize(MPI_Comm comm);
 int sitesToThreads(int sites);
 int getMasterRank(MPI_Comm comm);
 int isMasterRank(int rank, MPI_Comm comm);
+
+struct Stats {
+  int startingRank;
+  int ranks;
+  int startingTime;
+  int duration;
+};
+
 
 } //namespace
 #endif

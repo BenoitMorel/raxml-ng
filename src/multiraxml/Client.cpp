@@ -161,6 +161,17 @@ void Client::readCommands(const string &input_file, RaxmlCommands &commands)
   }
 }
 
+void Client::sendStats(const Stats &s) 
+{
+  if (getRank(_currentLocalComm)) {
+    return;
+  }
+  int tmp[5];
+  tmp[0] = MPI_SIGNAL_SEND_STATS;
+  *((Stats*)&tmp[1]) = s;
+  MPI_Send(&tmp, 5, MPI_INT, _globalMasterRank, MPI_TAG_TO_MASTER, _globalComm);  
+}
+
 void Client::client_thread(const string &input_file, Timer &begin) {
   
   RaxmlCommands commands;
@@ -186,7 +197,16 @@ void Client::client_thread(const string &input_file, Timer &begin) {
       _currentLocalComm = newComm;
     }
     if (runTheCommand) {
+      Stats s;
+      s.startingTime = get_elapsed_ms(begin);
+      s.startingRank = getRank(_globalComm);
+      s.ranks = getSize(_currentLocalComm);
+      Timer commandBegin = chrono::system_clock::now();
       command->run(_currentLocalComm, _globalComm);
+      MPI_Barrier(_currentLocalComm);
+      s.duration = get_elapsed_ms(commandBegin);
+      sendStats(s);
+      MPI_Barrier(_currentLocalComm);
     }
   }
   

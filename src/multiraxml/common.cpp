@@ -15,6 +15,13 @@ void print_elapsed(const Timer &begin)
   cout << "Elapsed time : " << elapsed_sec << "s" << endl;
 }
 
+int get_elapsed_ms(const Timer &begin)
+{
+  Timer end = chrono::system_clock::now();
+  return chrono::duration_cast<chrono::milliseconds>
+    (end-begin).count();
+}
+
 int getRank(MPI_Comm comm)
 {
   int res;
