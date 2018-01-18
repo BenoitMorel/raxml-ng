@@ -40,13 +40,15 @@ void server_thread(MPI_Comm globalComm) {
     if (tmp[0] == MPI_SIGNAL_KILL_MASTER) {
       cout << "thread_master received kill signal" << endl;
       return ;
+    } else if (tmp[0] == MPI_SIGNAL_END_DRYRUNS) {
+      cout << "sorting commands..." << endl;
+      sort(dimensions.rbegin(), dimensions.rend(), DimBuff::compare); 
     } else if (tmp[0] == MPI_SIGNAL_SEND_CMD_DIM) {
       DimBuff b;
       b.command = tmp[1];
       b.sites = tmp[2];
       b.nodes = tmp[3];
       dimensions.push_back(b);    
-      sort(dimensions.rbegin(), dimensions.rend(), DimBuff::compare); // todobenoit do not do that here!
     } else if (tmp[0] == MPI_SIGNAL_GET_CMD) {
       MPI_Send(&currentCommand, 1, MPI_INT, stat.MPI_SOURCE, MPI_TAG_TO_MASTER, globalComm);
       currentCommand++;

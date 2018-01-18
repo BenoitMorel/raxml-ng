@@ -14,6 +14,7 @@ const int MPI_SIGNAL_KILL_MASTER = 1;
 const int MPI_SIGNAL_GET_CMD = 2;
 const int MPI_SIGNAL_GET_SORTED_CMD = 3;
 const int MPI_SIGNAL_SEND_CMD_DIM = 4;
+const int MPI_SIGNAL_END_DRYRUNS = 5;
 const int NO_MORE_CMDS = -1;
 
 
