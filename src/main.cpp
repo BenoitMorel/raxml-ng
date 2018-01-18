@@ -20,7 +20,7 @@
 */
 
 #include "Raxml.hpp"
-#include "MultiRaxml.hpp"
+#include "multiraxml/multiraxml.hpp"
 #include "ParallelContext.hpp"
 #include "log.hpp"
 #include <iostream>
@@ -49,11 +49,8 @@ int main(int argc, char** argv)
 
 int main(int argc, char** argv)
 {
-  ParallelContext::init_mpi(argc, argv);
- 
-  
-  int res = multi_raxml(argc, argv);
-  ParallelContext::set_comm(MPI_COMM_WORLD);
+  ParallelContext::init_mpi(argc, argv); 
+  int res = multiraxml::multiraxml(argc, argv);
   clean_exit(res);
 
   return res;

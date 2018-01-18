@@ -32,6 +32,7 @@ class ParallelContext
 public:
 #ifdef _RAXML_MPI
   static void set_comm(MPI_Comm comm);
+  static MPI_Comm get_comm() {return _comm;}
 #endif
   static void init_mpi(int argc, char * argv[]);
   static void init_pthreads(const Options& opts, const std::function<void()>& thread_main);
