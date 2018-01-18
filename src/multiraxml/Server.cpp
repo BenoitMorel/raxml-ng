@@ -19,10 +19,12 @@ struct DimBuff {
   int sites;
   int nodes;
   static bool compare(const DimBuff &a, const DimBuff &b) {
-    if (a.sites == b.sites) {
-      return a.nodes < b.nodes;
+    int athreads = sitesToThreads(a.sites);
+    int bthreads = sitesToThreads(b.sites);
+    if (athreads == bthreads) {
+      return a.nodes * a.sites > b.nodes * b.sites;
     }
-    return (a.sites < b.sites); 
+    return (athreads < bthreads); 
   }
 };
 

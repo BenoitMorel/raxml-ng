@@ -38,7 +38,7 @@ int getSize(MPI_Comm comm)
 
 int sitesToThreads(int sites)
 {
-  int threads = max(sites, 1000) / 1000;
+  int threads = max(sites, 500) / 500;
   // lowest power of 2
   return pow(2,floor(log(threads)/log(2)));
 }

@@ -157,6 +157,7 @@ void Client::readCommands(const string &input_file, RaxmlCommands &commands)
       send_dimensions_to_master(currCmd, sites, nodes);
     }
   }
+  MPI_Barrier(_initialLocalComm);
   if (0 == getRank(_initialLocalComm)) {
     MPI_Send(&MPI_SIGNAL_END_DRYRUNS, 1, MPI_INT, _globalMasterRank, MPI_TAG_TO_MASTER, _globalComm); 
   }
@@ -194,7 +195,7 @@ void Client::client_thread(const string &input_file, Timer &begin) {
       int color = rank < (size / 2);
       int key = rank % (size / 2);
       MPI_Comm_split(_currentLocalComm, color, key, &newComm);
-      runTheCommand &= !color;
+      runTheCommand &= color;
       _currentLocalComm = newComm;
     }
     if (runTheCommand) {
