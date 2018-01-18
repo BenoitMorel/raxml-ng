@@ -165,8 +165,12 @@ void readCommands(const string &input_file, RaxmlCommands &commands, MPI_Comm gl
 }
 
 void client_thread(const string &input_file, MPI_Comm globalComm, MPI_Comm localComm, Timer &begin) {
+  
   RaxmlCommands commands;
   int currCommand = 0;
+  MPI_Comm initialLocalComm;
+  MPI_Comm_dup(localComm, &initialLocalComm);
+
   readCommands(input_file, commands, globalComm);
   MPI_Barrier(localComm);
   if (!getRank(localComm)) {
@@ -192,7 +196,7 @@ void client_thread(const string &input_file, MPI_Comm globalComm, MPI_Comm local
     }
   }
   
-  MPI_Barrier(localComm);
+  MPI_Barrier(initialLocalComm);
   if (0 == getRank(localComm)) {
     MPI_Send(&MPI_SIGNAL_KILL_MASTER, 1, MPI_INT, getMasterRank(globalComm), MPI_TAG_GET_CMD, globalComm); 
   }
