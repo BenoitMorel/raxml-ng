@@ -9,7 +9,7 @@ namespace multiraxml {
 
 using Timer =  std::chrono::time_point<std::chrono::system_clock>; 
 
-const int MPI_TAG_GET_CMD = 1;
+const int MPI_TAG_TO_MASTER = 1;
 const int MPI_SIGNAL_KILL_MASTER = 1;
 const int MPI_SIGNAL_GET_CMD = 2;
 const int MPI_SIGNAL_GET_SORTED_CMD = 3;

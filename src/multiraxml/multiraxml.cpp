@@ -39,7 +39,8 @@ int multiraxml(int argc, char** argv)
     server_thread(globalComm);
     print_elapsed(begin);
   } else {
-    client_thread(input_file, globalComm, localComm, begin);
+    Client client(globalComm, localComm); 
+    client.client_thread(input_file, begin);
   }
   
   ParallelContext::set_comm(savedComm);
