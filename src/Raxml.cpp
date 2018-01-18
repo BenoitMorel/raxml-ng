@@ -1172,7 +1172,7 @@ int get_dimensions(int argc, char** argv, int &sites, int &tips)
     instance.opts.num_ranks = ParallelContext::num_ranks();
     CommandLineParser cmdline;
     cmdline.parse_options(argc, argv, instance.opts);
-    instance.opts.use_pattern_compression = false;
+    instance.opts.use_pattern_compression = true;
     init_part_info(instance);
     load_msa(instance);
     sites = instance.parted_msa.total_length();

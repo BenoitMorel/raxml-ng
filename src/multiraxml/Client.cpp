@@ -44,6 +44,7 @@ RaxmlCommand::RaxmlCommand(const string &command_str)
 bool RaxmlCommand::parse_dimensions(int &sites, int &tips) {
   _valid = (EXIT_SUCCESS == 
       get_dimensions(_argv.size() - 1, &_argv[0], sites, tips));
+  cout << "dims " << sites << endl;
   return _valid;
 }
 
