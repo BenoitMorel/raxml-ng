@@ -22,7 +22,7 @@ struct DimBuff {
     int athreads = sitesToThreads(a.sites);
     int bthreads = sitesToThreads(b.sites);
     if (athreads == bthreads) {
-      return a.nodes * a.sites > b.nodes * b.sites;
+      return a.nodes * a.sites < b.nodes * b.sites;
     }
     return (athreads < bthreads); 
   }
@@ -122,8 +122,8 @@ void Server::saveStats(const std::string &outputFile)
     totalHeight = max(totalHeight, s.startingTime + s.duration);
   }
 
-  double ratioWidth = 1000.0 / totalWidth;
-  double ratioHeight = 1000.0 / totalHeight;
+  double ratioWidth = 100.0 / double(totalWidth);
+  double ratioHeight = 100.0 / double(totalHeight);
 
   // for each registered statistic
   for (const auto &s: _stats) {

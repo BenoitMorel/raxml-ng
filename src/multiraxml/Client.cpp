@@ -69,7 +69,7 @@ string RaxmlCommand::getDebugStr(int globalRank, int threads) const {
   if (!_valid) {
     os << "Invalid command: ";
   } else {
-    os << "Proc " << globalRank << ":" << globalRank + threads - 1 << " runs: ";
+    os << "Proc " << globalRank << ":" << globalRank + threads << " runs: ";
   }
   for (const auto &str: _args) {
     os << str << " ";
@@ -192,8 +192,8 @@ void Client::client_thread(const string &input_file, Timer &begin) {
       MPI_Comm newComm;
       int size = getSize(_currentLocalComm);
       int rank = getRank(_currentLocalComm);
-      int color = rank < (size / 2);
-      int key = rank % (size / 2);
+      int color = rank < ((size + 1) / 2);
+      int key = rank % ((size + 1) / 2);
       MPI_Comm_split(_currentLocalComm, color, key, &newComm);
       runTheCommand &= color;
       _currentLocalComm = newComm;
