@@ -20,9 +20,15 @@
 using namespace std;
 using Timer =  chrono::time_point<chrono::system_clock>; 
                              
-const int MPI_TAG_GET_CMD = 0;
+const int MPI_TAG_GET_CMD = 1;
+
 const int MPI_SIGNAL_KILL_MASTER = 1;
 const int MPI_SIGNAL_GET_CMD = 2;
+const int MPI_SIGNAL_GET_SORTED_CMD = 3;
+const int MPI_SIGNAL_SEND_CMD_DIM = 4;
+
+const int NO_MORE_CMDS = -1;
+
 int MASTER_RANK = 0;
 
 void print_elapsed(const Timer &begin)
@@ -65,6 +71,7 @@ public:
 
   RaxmlCommand(const string &command_str)
   {
+    _valid = true;
     istringstream is(command_str);
     _args.push_back("raxml");
     while (is) {
@@ -76,11 +83,20 @@ public:
     for (unsigned int i = 0; i < _args.size(); ++i) {
       _argv [i + 1] = (char *)_args[i].c_str(); //todobenoit const hack here
     }
+  }
 
+  bool parse_dimensions(int &sites, int &tips) {
     _valid = (EXIT_SUCCESS == 
-        get_dimensions(_argv.size() - 1, &_argv[0], _sites, _tips));
+        get_dimensions(_argv.size() - 1, &_argv[0], sites, tips));
+    return _valid;
+  }
 
+  void set_dimensions(int sites, int tips) {
+    
+    _sites = sites;
+    _tips = tips;
     _threadsNumber = sitesToThreads(_sites);
+
   }
 
   bool valid() const {return _valid;}
@@ -127,22 +143,56 @@ private:
 using RaxmlCommands = vector<shared_ptr<RaxmlCommand> >;
 
 
+struct DimBuff {
+  int command;
+  int sites;
+  int nodes;
+  static bool compare(const DimBuff &a, const DimBuff &b) {
+    if (a.sites == b.sites) {
+      return a.nodes < b.nodes;
+    }
+    return (a.sites < b.sites); 
+  }
+};
+
 // master thread
 void *master_thread(void *d) {
   MPI_Comm globalComm = (MPI_Comm) d;
   int currentCommand = 0;
+  int currentSortedCommand = 0;
+  std::vector<DimBuff> dimensions;
   while(true) {
     MPI_Status stat;
-    int tmp = 0;
-    MPI_Recv(&tmp, 1, MPI_INT, MPI_ANY_SOURCE, MPI_TAG_GET_CMD, globalComm, &stat);
-    if (tmp == MPI_SIGNAL_KILL_MASTER) {
+    const unsigned int SIZE_BUFF = 4;
+    int tmp[SIZE_BUFF];
+    int buff_size = 1;
+    MPI_Probe(MPI_ANY_SOURCE, MPI_TAG_GET_CMD, globalComm, &stat);
+    MPI_Get_count(&stat, MPI_INT, &buff_size);
+    MPI_Recv(tmp, buff_size, MPI_INT, MPI_ANY_SOURCE, MPI_TAG_GET_CMD, globalComm, &stat);
+    if (tmp[0] == MPI_SIGNAL_KILL_MASTER) {
       cout << "thread_master received kill signal" << endl;
       return 0;
-    } else if (tmp == MPI_SIGNAL_GET_CMD) {
-      cout << "thread master sends command " << currentCommand <<
-        " to rank " << stat.MPI_SOURCE << endl;
+    } else if (tmp[0] == MPI_SIGNAL_SEND_CMD_DIM) {
+      DimBuff b;
+      b.command = tmp[1];
+      b.sites = tmp[2];
+      b.nodes = tmp[3];
+      dimensions.push_back(b);    
+      sort(dimensions.rbegin(), dimensions.rend(), DimBuff::compare); 
+    } else if (tmp[0] == MPI_SIGNAL_GET_CMD) {
       MPI_Send(&currentCommand, 1, MPI_INT, stat.MPI_SOURCE, MPI_TAG_GET_CMD, globalComm);
       currentCommand++;
+    } else if (tmp[0] == MPI_SIGNAL_GET_SORTED_CMD) {
+      if (currentSortedCommand < dimensions.size()) {
+        MPI_Send(&dimensions[currentSortedCommand].command,
+            3, MPI_INT, stat.MPI_SOURCE, MPI_TAG_GET_CMD, globalComm);
+        currentSortedCommand++;
+      } else {
+        int buff[3];
+        buff[0] = buff[1] = buff[2] = NO_MORE_CMDS;
+        MPI_Send(buff,
+            3, MPI_INT, stat.MPI_SOURCE, MPI_TAG_GET_CMD, globalComm);
+      }
     } else {
       cerr << "Error in master_thread: unexpected signal " << tmp << endl; 
     }
@@ -152,21 +202,47 @@ void *master_thread(void *d) {
 
 
 // called from the slave thread
-int getCurrentCommand(MPI_Comm globalComm, MPI_Comm localComm) {
-  int currentCommand = 0;
+int getSortedCurrentCommand(RaxmlCommands &commands, MPI_Comm globalComm, MPI_Comm localComm) {
+  int tmp[3];
   int requestingRank = 0;
   if (getRank(localComm) == requestingRank) {
     MPI_Status stat;
-    MPI_Sendrecv(&MPI_SIGNAL_GET_CMD, 1, MPI_INT, MASTER_RANK, MPI_TAG_GET_CMD, 
-        &currentCommand, 1, MPI_INT, MASTER_RANK, MPI_TAG_GET_CMD, globalComm, &stat);
+    MPI_Sendrecv(&MPI_SIGNAL_GET_SORTED_CMD, 1,
+        MPI_INT, MASTER_RANK, MPI_TAG_GET_CMD, 
+        &tmp, 3, MPI_INT, MASTER_RANK, 
+        MPI_TAG_GET_CMD, globalComm, &stat);
   }
 
-  MPI_Bcast(&currentCommand, 1, MPI_INT, requestingRank, localComm);
+  MPI_Bcast(&tmp, 3, MPI_INT, requestingRank, localComm);
   MPI_Barrier(localComm);
-  return currentCommand;
+  if (tmp[0] == NO_MORE_CMDS) {
+    return NO_MORE_CMDS;
+  }
+  std::shared_ptr<RaxmlCommand> cmd = commands[tmp[0]];
+  cmd->set_dimensions(tmp[1], tmp[2]);
+  return tmp[0];
 }
 
-void readCommands(const string &input_file, RaxmlCommands &commands, MPI_Comm localComm)
+int getCurrentCommand(MPI_Comm globalComm) {
+  int currentCommand = 0;
+    MPI_Status stat;
+    MPI_Sendrecv(&MPI_SIGNAL_GET_CMD, 1,
+        MPI_INT, MASTER_RANK, MPI_TAG_GET_CMD, 
+        &currentCommand, 1, MPI_INT, MASTER_RANK, 
+        MPI_TAG_GET_CMD, globalComm, &stat);
+    return currentCommand;
+}
+
+void send_dimensions_to_master(int cmd, int sites, int nodes, MPI_Comm globalComm) {
+  int msg[4];
+  msg[0] = MPI_SIGNAL_SEND_CMD_DIM;
+  msg[1] = cmd;
+  msg[2] = sites;
+  msg[3] = nodes;
+  MPI_Send(msg, 4, MPI_INT, MASTER_RANK, MPI_TAG_GET_CMD, globalComm); 
+}
+
+void readCommands(const string &input_file, RaxmlCommands &commands, MPI_Comm globalComm, MPI_Comm localComm)
 {
   vector<string> commands_str;
   ifstream is(input_file);
@@ -177,27 +253,28 @@ void readCommands(const string &input_file, RaxmlCommands &commands, MPI_Comm lo
   }
   for (const auto &str: commands_str) {
     RaxmlCommand *command = new RaxmlCommand(str);
-    if (command->valid()) {
-      commands.push_back(shared_ptr<RaxmlCommand>(command));
-    } else {
-      if (!getRank(localComm)) {
-        std::cout << command->getDebugStr(0, 0) << std::endl;
-      }
-    }
+    commands.push_back(shared_ptr<RaxmlCommand>(command));
   }
-  sort(commands.rbegin(), commands.rend(), RaxmlCommand::comparePtr); 
+  int currCmd = 0;
+  while ((currCmd = getCurrentCommand(globalComm)) < (int)commands.size()) {
+    int sites = 0;
+    int nodes = 0;
+    bool valid = commands[currCmd]->parse_dimensions(sites, nodes);
+    if (valid)
+      send_dimensions_to_master(currCmd, sites, nodes, globalComm);
+  }
 }
 
 void slaves_thread(const string &input_file, MPI_Comm globalComm, MPI_Comm localComm, Timer &begin) {
   RaxmlCommands commands;
   int currCommand = 0;
-  readCommands(input_file, commands, localComm);
+  readCommands(input_file, commands, globalComm, localComm);
   std::cout << "read " << getRank(globalComm) << std::endl;
   MPI_Barrier(localComm);
   if (!getRank(localComm)) {
     print_elapsed(begin);
   }
-  while ((currCommand = getCurrentCommand(globalComm, localComm)) < (int)commands.size()) {
+  while ((currCommand = getSortedCurrentCommand(commands, globalComm, localComm)) != NO_MORE_CMDS) {
     auto command = commands[currCommand];
     bool runTheCommand = true;
     while (command->getThreadsNumber() < getSize(localComm)) {
