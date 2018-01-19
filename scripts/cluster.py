@@ -6,7 +6,7 @@ import subprocess
 import shutil
 import utils_multiraxml
 
-def duplicateAndRun(initialCommandFile, threads, outputPath):
+def duplicateAndRun(initialCommandFile, threads, outputPath, naive = False):
   try:
     shutil.rmtree(outputPath)
   except:
@@ -16,7 +16,7 @@ def duplicateAndRun(initialCommandFile, threads, outputPath):
 
   mypath = os.path.dirname(os.path.realpath(__file__))
   executable = os.path.join(mypath, "../bin/raxml-ng-mpi")
-  command = " ".join(utils_multiraxml.getCommand(executable, commandFile, threads, outputPath)) 
+  command = " ".join(utils_multiraxml.getCommand(executable, commandFile, threads, outputPath, naive)) 
   print("Command to run: " + command) 
   nodes = str((int(threads) - 1) // 16 + 1)
   with open(submitFile, "w") as f:

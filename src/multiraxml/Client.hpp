@@ -33,7 +33,7 @@ using RaxmlCommands = std::vector<std::shared_ptr<RaxmlCommand> >;
 class Client {
 public:
   Client(MPI_Comm globalComm, MPI_Comm localComm);
-  void client_thread(const std::string &input_file, Timer &begin); 
+  void client_thread(const std::string &input_file, Timer &begin, bool naive); 
 
 private:
   int getSortedCurrentCommand(RaxmlCommands &commands);

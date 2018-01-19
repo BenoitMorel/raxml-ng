@@ -16,14 +16,25 @@ namespace multiraxml {
 
 int multiraxml(int argc, char** argv)
 { 
-  if (argc != 3) {
-    cout << "Invalid syntax: multi-raxml requires 2 arguments" << endl;
-    cout << "Syntax: ./multiraxml commandsFile svgoutput" << endl;
+  if (argc > 4 || argc <2) { //todobenoit this syntax message sucks
+    cout << "Invalid syntax: multi-raxml requires one mandatory argument and 2 optional arguemnts" << endl;
+    cout << "Syntax: ./multiraxml commandsFile svgoutput=\"\" naive=\"0\"" << endl;
     return 0;
   }
     
-  string input_file = argv[1]; 
-  string svg_output_file = argv[2]; 
+  string input_file = argv[1];
+  string svg_output_file;
+  if (argc > 2) {
+    svg_output_file = argv[2]; 
+  }
+  bool naive = false;
+  if (argc > 3 && atoi(argv[3])) {
+    naive = true;
+    if (!ParallelContext::proc_id) {
+      cout << "Naive mode enabled" << endl;
+    }
+  }
+
   MPI_Comm savedComm = ParallelContext::get_comm();
   Timer begin = chrono::system_clock::now();;
   
@@ -44,7 +55,7 @@ int multiraxml(int argc, char** argv)
     print_elapsed(begin);
   } else {
     Client client(globalComm, localComm); 
-    client.client_thread(input_file, begin);
+    client.client_thread(input_file, begin, naive);
   }
   
   ParallelContext::set_comm(savedComm);

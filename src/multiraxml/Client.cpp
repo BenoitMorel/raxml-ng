@@ -174,7 +174,7 @@ void Client::sendStats(const Stats &s)
   MPI_Send(&tmp, 5, MPI_INT, _globalMasterRank, MPI_TAG_TO_MASTER, _globalComm);  
 }
 
-void Client::client_thread(const string &input_file, Timer &begin) {
+void Client::client_thread(const string &input_file, Timer &begin, bool naive) {
   
   RaxmlCommands commands;
   int currCommand = 0;
@@ -185,6 +185,11 @@ void Client::client_thread(const string &input_file, Timer &begin) {
     print_elapsed(begin);
   }
   MPI_Barrier(_initialLocalComm);
+  if (naive) { // one run per rank: let's split everything
+    MPI_Comm newComm;
+    MPI_Comm_split(_currentLocalComm, getRank(_currentLocalComm), 0, &newComm);
+    _currentLocalComm = newComm;
+  }
   while ((currCommand = getSortedCurrentCommand(commands)) != NO_MORE_CMDS) {
     auto command = commands[currCommand];
     bool runTheCommand = true;
