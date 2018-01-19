@@ -124,8 +124,8 @@ void Server::saveStats(const std::string &outputFile)
     totalHeight = max(totalHeight, s.startingTime + s.duration);
   }
 
-  double ratioWidth = 100.0 / double(totalWidth);
-  double ratioHeight = 100.0 / double(totalHeight);
+  double ratioWidth = 500.0 / double(totalWidth);
+  double ratioHeight = 500.0 / double(totalHeight);
 
   // for each registered statistic
   for (const auto &s: _stats) {

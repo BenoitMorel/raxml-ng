@@ -209,6 +209,7 @@ void Client::client_thread(const string &input_file, Timer &begin, bool naive) {
       s.startingRank = getRank(_globalComm);
       s.ranks = getSize(_currentLocalComm);
       Timer commandBegin = chrono::system_clock::now();
+      MPI_Barrier(_currentLocalComm);
       command->run(_currentLocalComm, _globalComm);
       MPI_Barrier(_currentLocalComm);
       s.duration = get_elapsed_ms(commandBegin);

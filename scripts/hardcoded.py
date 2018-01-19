@@ -18,8 +18,14 @@ example_outputPath = "/home/morelbt/github/multi-raxml/deps/raxml-ng/runs/script
 #run(example_command, example_outputPath, 32, True)
 #run(example_command, example_outputPath, 32, False)
 
-run(carine_command, carine_outputPath, 128, True)
-run(carine_command, carine_outputPath, 128, False)
+#run(carine_command, carine_outputPath, 128, True)
+#run(carine_command, carine_outputPath, 128, False)
+
+#run(carine_command, carine_outputPath, 256, True)
+#run(carine_command, carine_outputPath, 256, False)
+
+#run(carine_command, carine_outputPath, 512, True)
+run(carine_command, carine_outputPath, 512, False)
 
 
 
