@@ -32,8 +32,7 @@ def duplicateAndRun(initialCommandFile, threads, outputPath):
     f.write("\n")
     f.write(command)
   print("submit file: " + submitFile)
-  print("TODO CALL SUBMIT")
-  #subprocess.check_call(["sbatch", "-s" ,submitFile])
+  subprocess.check_call(["sbatch", "-s" ,submitFile])
 
 
 

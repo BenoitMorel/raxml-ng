@@ -47,7 +47,9 @@ void Server::server_thread() {
     int buff_size = 1;
     MPI_Probe(MPI_ANY_SOURCE, MPI_TAG_TO_MASTER, _globalComm, &stat);
     MPI_Get_count(&stat, MPI_INT, &buff_size);
-    MPI_Recv(tmp, buff_size, MPI_INT, MPI_ANY_SOURCE, MPI_TAG_TO_MASTER, _globalComm, &stat);
+    //std::cout << "prob: size=" << buff_size << " rank=" << stat.MPI_SOURCE << std::endl;
+    MPI_Recv(tmp, buff_size, MPI_INT, stat.MPI_SOURCE, MPI_TAG_TO_MASTER, _globalComm, &stat);
+    //std::cout << "recv: signal=" << tmp[0]  << " rank=" << stat.MPI_SOURCE << endl;
     if (tmp[0] == MPI_SIGNAL_KILL_MASTER) {
       cout << "thread_master received kill signal" << endl;
       return ;
