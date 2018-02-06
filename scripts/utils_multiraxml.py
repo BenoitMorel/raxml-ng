@@ -30,7 +30,7 @@ def getCommand(executable, commandFile, threads, outputPath, naive):
     cmd.append("0")
   return cmd
 
-def run(executable, commandFile, threads, outputPath):
+def run(executable, commandFile, threads, outputPath, naive):
   cmd = getCommand(executable, commandFile, threads, outputPath, naive)
   outputLog = os.path.join(outputPath, "logs.txt")
   print("running " + ' '.join(cmd))
@@ -40,7 +40,7 @@ def run(executable, commandFile, threads, outputPath):
   print("end of the run")
   
 def duplicate(initialCommandFile, threads, outputPath):
-  os.mkdir(outputPath)
+  os.makedirs(outputPath, exist_ok=True)
   print("Created directory" + outputPath)
   commandFile = os.path.join(outputPath, os.path.basename(initialCommandFile))
   shutil.copyfile(initialCommandFile, commandFile)
